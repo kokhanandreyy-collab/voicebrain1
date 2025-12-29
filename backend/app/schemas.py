@@ -64,6 +64,11 @@ class NoteUpdate(BaseModel):
     tags: Optional[List[str]] = None
     mood: Optional[str] = None
 
+class NoteEditRequest(BaseModel):
+    title: str
+    summary: str
+    action_items: List[str]
+
 class IntegrationStatus(BaseModel):
     provider: str
     status: str # SUCCESS, FAILED, PENDING

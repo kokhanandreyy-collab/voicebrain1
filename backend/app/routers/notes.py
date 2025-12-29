@@ -545,3 +545,38 @@ async def share_note(
         raise HTTPException(status_code=500, detail=f"Sharing failed: {str(e)}")
 
     return {"status": "success", "provider": provider}
+
+from app.schemas import NoteEditRequest
+
+@router.post("/{note_id}/edit", response_model=NoteResponse)
+async def edit_note(
+    note_id: str,
+    req: NoteEditRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually edit note content (title, summary, action items).
+    Updates semantic embedding automatically.
+    """
+    result = await db.execute(select(Note).where(Note.id == note_id, Note.user_id == current_user.id))
+    note = result.scalars().first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+        
+    note.title = req.title
+    note.summary = req.summary
+    note.action_items = req.action_items
+    
+    # Update Embedding for semantic search continuity
+    search_content = f"{note.title} {note.summary} {note.transcription_text or ''}"
+    try:
+        from app.services.ai_service import ai_service
+        note.embedding = await ai_service.generate_embedding(search_content)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to update embedding during edit: {e}")
+
+    await db.commit()
+    await db.refresh(note)
+    return note

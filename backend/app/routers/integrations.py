@@ -430,3 +430,32 @@ async def yandex_maps_callback(
     from app.services.integrations.yandex_maps_service import yandex_maps_service
     status = await yandex_maps_service.connect(current_user.id, code)
     return {"status": status}
+@router.post("/apple-reminders/connect")
+async def connect_apple_reminders(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Apple Reminders."""
+    from app.services.integrations.tasks_service import tasks_service
+    status = await tasks_service.connect_apple(current_user.id, code)
+    return {"status": status}
+
+@router.post("/google-tasks/connect")
+async def connect_google_tasks(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Google Tasks."""
+    from app.services.integrations.tasks_service import tasks_service
+    status = await tasks_service.connect_google_tasks(current_user.id, code)
+    return {"status": status}
+
+@router.post("/google-tasks/callback")
+async def google_tasks_callback(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Google Tasks."""
+    from app.services.integrations.tasks_service import tasks_service
+    status = await tasks_service.connect_google_tasks(current_user.id, code)
+    return {"status": status}

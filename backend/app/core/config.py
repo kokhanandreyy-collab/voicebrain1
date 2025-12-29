@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     YANDEX_MAPS_API_KEY: Optional[str] = None
     YANDEX_OAUTH_CLIENT_ID: Optional[str] = None
     YANDEX_OAUTH_CLIENT_SECRET: Optional[str] = None
+    
+    # Tasks
+    APPLE_CLIENT_ID: Optional[str] = None
+    APPLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_TASKS_CLIENT_ID: Optional[str] = None
+    GOOGLE_TASKS_CLIENT_SECRET: Optional[str] = None
 
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None

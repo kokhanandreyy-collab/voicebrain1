@@ -519,3 +519,23 @@ async def connect_obsidian(
     from app.services.integrations.obsidian_service import obsidian_service
     status = await obsidian_service.connect(current_user.id, vault_path)
     return {"status": status}
+
+@router.post("/yandex-tasks/connect")
+async def connect_yandex_tasks(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Yandex Tasks."""
+    from app.services.integrations.yandex_tasks_service import yandex_tasks_service
+    status = await yandex_tasks_service.connect(current_user.id, code)
+    return {"status": status}
+
+@router.post("/yandex-tasks/callback")
+async def yandex_tasks_callback(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Yandex Tasks."""
+    from app.services.integrations.yandex_tasks_service import yandex_tasks_service
+    await yandex_tasks_service.connect(current_user.id, code)
+    return {"status": "Connected"}

@@ -118,6 +118,7 @@ class Note(Base):
     email_draft_id = Column(String, nullable=True)
     readwise_highlight_id = Column(String, nullable=True)
     obsidian_note_path = Column(String, nullable=True)
+    yandex_task_id = Column(String, nullable=True)
 
     # Agentic Workflow Metadata (Hidden fields for pipeline)
     ai_analysis = Column(JSON, nullable=True) # Full raw analysis
@@ -154,6 +155,7 @@ class Integration(Base):
     outlook_token = Column(LargeBinary, nullable=True)
     readwise_token = Column(LargeBinary, nullable=True)
     obsidian_vault_path = Column(LargeBinary, nullable=True)
+    yandex_tasks_token = Column(LargeBinary, nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     config = Column(JSON, default={}) # e.g. default_database_id
     is_active = Column(Boolean, default=True)

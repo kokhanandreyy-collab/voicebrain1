@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     
     # Readwise
     READWISE_API_KEY: Optional[str] = None
+    
+    # Yandex Tasks
+    YANDEX_TASKS_CLIENT_ID: Optional[str] = None
+    YANDEX_TASKS_CLIENT_SECRET: Optional[str] = None
 
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None

@@ -1,52 +1,54 @@
+from typing import List, Optional, Dict, Any, Union
 import asyncio
 import os
 import hashlib
 import json
 import redis.asyncio as redis
 from openai import AsyncOpenAI
+from loguru import logger
 from app.core.config import settings
 from sqlalchemy.future import select
 from app.models import Note, User
+from app.core.types import AnalysisResult
+import httpx # Import httpx for specific exceptions
 
 class AIService:
-    def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
+    def __init__(self) -> None:
+        self.api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.client: Optional[AsyncOpenAI] = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
         # Redis Cache
-        self.redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+        self.redis: redis.Redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 
-    async def transcribe_audio(self, audio_file_content: bytes) -> dict:
+    async def transcribe_audio(self, audio_file_content: bytes) -> Dict[str, str]:
         """
         Transcribe audio using AssemblyAI API.
         """
-        import httpx
         
-        aai_key = os.getenv("ASSEMBLYAI_API_KEY")
+        aai_key: Optional[str] = os.getenv("ASSEMBLYAI_API_KEY")
         
         if not aai_key:
-            print("[WARN] ASSEMBLYAI_API_KEY not found. Using Mock Fallback.")
+            logger.warning("ASSEMBLYAI_API_KEY not found. Using Mock Fallback.")
             await asyncio.sleep(2)
             return {"text": "Mock transcription (AssemblyAI): API Key missing."}
 
-        headers = {
+        headers: Dict[str, str] = {
             "authorization": aai_key
         }
 
         from app.core.http_client import http_client
         try:
             # 1. Upload
-            # AssemblyAI expects raw bytes in body
-            print("Uploading audio to AssemblyAI...")
+            logger.info("Uploading audio to AssemblyAI...")
             upload_res = await http_client.client.post(
                 "https://api.assemblyai.com/v2/upload",
                 headers=headers,
                 content=audio_file_content
             )
             upload_res.raise_for_status()
-            upload_url = upload_res.json()["upload_url"]
+            upload_url: str = upload_res.json()["upload_url"]
 
             # 2. Start Transcription
-            print(f"Starting transcription for {upload_url}...")
+            logger.info(f"Starting transcription for {upload_url}...")
             transcript_res = await http_client.client.post(
                 "https://api.assemblyai.com/v2/transcript",
                 json={
@@ -57,27 +59,31 @@ class AIService:
                 headers=headers
             )
             transcript_res.raise_for_status()
-            transcript_id = transcript_res.json()["id"]
+            transcript_id: str = transcript_res.json()["id"]
 
-                # 3. Poll for Completion
-                polling_endpoint = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
+            # 3. Poll for Completion
+            polling_endpoint: str = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
+            
+            while True:
+                poll_res = await http_client.client.get(polling_endpoint, headers=headers)
+                poll_res.raise_for_status()
+                poll_data: Dict[str, Any] = poll_res.json()
                 
-                while True:
-                    poll_res = await http_client.client.get(polling_endpoint, headers=headers)
-                    poll_res.raise_for_status()
-                    poll_data = poll_res.json()
-                    
-                    status = poll_data["status"]
-                    if status == "completed":
-                        return {"text": poll_data["text"]}
-                    elif status == "error":
-                        raise Exception(f"AssemblyAI Error: {poll_data['error']}")
-                    
-                    await asyncio.sleep(2) # Wait 2s before polling again
-                    
-            except Exception as e:
-                print(f"AssemblyAI Transcription Error: {e}")
-                raise e
+                status: str = poll_data["status"]
+                if status == "completed":
+                    return {"text": poll_data["text"]}
+                elif status == "error":
+                    error_msg: str = poll_data.get("error", "Unknown AssemblyAI error")
+                    raise RuntimeError(f"AssemblyAI Error: {error_msg}")
+                
+                await asyncio.sleep(2) # Wait 2s before polling again
+                
+        except (httpx.HTTPStatusError, httpx.RequestError) as http_err:
+            logger.error(f"AssemblyAI HTTP error: {http_err}")
+            raise
+        except Exception as e:
+            logger.error(f"AssemblyAI Transcription unexpected error: {e}")
+            raise e
 
     def clean_json_response(self, content: str) -> str:
         """
@@ -86,7 +92,7 @@ class AIService:
         if not content:
             return ""
         
-        cleaned = content.strip()
+        cleaned: str = content.strip()
         
         # 1. Regex to find outer {} ignoring markup
         import re
@@ -101,13 +107,16 @@ class AIService:
         """
         Fetches system prompt from Redis (cache) or DB.
         """
-        cache_key = f"system_prompt:{key}"
+        cache_key: str = f"system_prompt:{key}"
         
         # 1. Check Redis
-        if self.redis:
-            cached = await self.redis.get(cache_key)
-            if cached:
-                return cached
+        try:
+            if self.redis:
+                cached: Optional[str] = await self.redis.get(cache_key)
+                if cached:
+                    return cached
+        except Exception as e:
+            logger.warning(f"Redis get error: {e}")
         
         # 2. Check DB
         try:
@@ -116,29 +125,29 @@ class AIService:
             
             async with AsyncSessionLocal() as session:
                 result = await session.execute(select(SystemPrompt).where(SystemPrompt.key == key))
-                prompt = result.scalars().first()
+                prompt: Optional[SystemPrompt] = result.scalars().first()
                 
                 if prompt:
-                    text = prompt.text
+                    text: str = prompt.text
                     # Cache for 5 minutes
                     if self.redis:
                         await self.redis.setex(cache_key, 300, text)
                     return text
         except Exception as e:
-            print(f"Error fetching system prompt '{key}': {e}")
+            logger.error(f"Error fetching system prompt '{key}': {e}")
             
         return default_text
 
-    async def analyze_text(self, text: str, user_context: str = None, target_language: str = "Original") -> dict:
+    async def analyze_text(self, text: str, user_context: Optional[str] = None, target_language: str = "Original") -> Dict[str, Any]:
         """
         Analyze text using DeepSeek V3 (via OpenAI-compatible API).
         """
         # Configure Analysis Client (DeepSeek > OpenAI > Mock)
-        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-        deepseek_base = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+        deepseek_base: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
         
-        analysis_client = None
-        analysis_model = "gpt-4o"
+        analysis_client: Optional[AsyncOpenAI] = None
+        analysis_model: str = "gpt-4o"
 
         if deepseek_key:
             analysis_client = AsyncOpenAI(api_key=deepseek_key, base_url=deepseek_base)
@@ -149,26 +158,25 @@ class AIService:
 
         if not analysis_client:
             await asyncio.sleep(1)
-            return {
-                "title": "Mock Analysis (No Keys)",
-                "summary": "Please set DEEPSEEK_API_KEY or OPENAI_API_KEY to enable AI analysis.",
-                "action_items": ["Add API Keys"],
-                "calendar_events": [],
-                "tags": ["Mock", "Config Required"],
-                "mood": "Waiting"
-            }
+            return AnalysisResult(
+                title="Mock Analysis (No Keys)",
+                summary="Please set DEEPSEEK_API_KEY or OPENAI_API_KEY to enable AI analysis.",
+                action_items=["Add API Keys"],
+                tags=["Mock", "Config Required"],
+                mood="Waiting"
+            ).model_dump()
 
         try:
             # System Prompt for DeepSeek
             # We add specific place in prompt for User Context
-            context_instruction = f"\nUSER CONTEXT (Bio/Jargon): {user_context}\nUse this context to correctly identify names, projects, and specific jargon." if user_context else ""
+            context_instruction: str = f"\nUSER CONTEXT (Bio/Jargon): {user_context}\nUse this context to correctly identify names, projects, and specific jargon." if user_context else ""
             
             # Language Instruction
-            lang_instruction = ""
+            lang_instruction: str = ""
             if target_language and target_language != "Original":
                 lang_instruction = f"\nCRITICAL: Regardless of the input language, ALWAYS generate the Title, Summary, and Action Items in {target_language} language."
 
-            default_prompt = (
+            default_prompt: str = (
                 "You are an advanced AI assistant powered by DeepSeek V3. "
                 "Analyze the user's audio transcription. "
                 f"{context_instruction}"
@@ -198,7 +206,7 @@ class AIService:
             # If the user edited the prompt in Admin Panel, they might not have {user_context}.
             # So we should probably append it to the message list if possible, or append to system prompt text.
             
-            base_system_prompt = await self.get_system_prompt("general_analysis", default_prompt)
+            base_system_prompt: str = await self.get_system_prompt("general_analysis", default_prompt)
             
             # If the fetched prompt doesn't look like it has context logic, we append it.
             if user_context and "USER CONTEXT" not in base_system_prompt:
@@ -208,15 +216,18 @@ class AIService:
             if lang_instruction and "ALWAYS generate the Title" not in base_system_prompt:
                  base_system_prompt += f"\n{lang_instruction}"
             
-            system_prompt = base_system_prompt
+            system_prompt: str = base_system_prompt
 
             # Check Cache
-            text_hash = hashlib.sha256(text.encode()).hexdigest()
-            cache_key = f"cache:ai:analysis:{text_hash}"
+            text_hash: str = hashlib.sha256(text.encode()).hexdigest()
+            cache_key: str = f"cache:ai:analysis:{text_hash}"
             if self.redis:
-                cached = await self.redis.get(cache_key)
-                if cached:
-                    return json.loads(cached)
+                try:
+                    cached: Optional[str] = await self.redis.get(cache_key)
+                    if cached:
+                        return json.loads(cached)
+                except Exception as cache_err:
+                    logger.warning(f"Redis get analysis cache error: {cache_err}")
 
             response = await analysis_client.chat.completions.create(
                 model=analysis_model,
@@ -226,17 +237,19 @@ class AIService:
                 ],
                 response_format={ "type": "json_object" }
             )
-            content = response.choices[0].message.content
+            content: str = response.choices[0].message.content or "{}"
             
             # Clean and Parse JSON
-            cleaned_content = self.clean_json_response(content)
+            cleaned_content: str = self.clean_json_response(content)
             try:
-                result = json.loads(cleaned_content)
-            except json.JSONDecodeError as decode_err:
-                print(f"JSON Decode Error: {decode_err}. Attempting REPAIR.")
+                result: Dict[str, Any] = json.loads(cleaned_content)
+                # Validate with Pydantic
+                AnalysisResult(**result)
+            except (json.JSONDecodeError, Exception) as decode_err: # Catch Pydantic ValidationError too
+                logger.error(f"JSON Decode/Validation Error: {decode_err}. Attempting REPAIR.")
                 try:
                     # Retry with repair instructions
-                    repair_prompt = (
+                    repair_prompt: str = (
                         "The previous response was invalid JSON. "
                         "Please regenerate the exact same analysis but ensure it is strictly valid JSON. "
                         "Do not include markdown blocks or extra text."
@@ -251,50 +264,52 @@ class AIService:
                         ],
                         response_format={ "type": "json_object" }
                     )
-                    retry_content = self.clean_json_response(retry_res.choices[0].message.content)
+                    retry_content: str = self.clean_json_response(retry_res.choices[0].message.content or "{}")
                     result = json.loads(retry_content)
-                    print("JSON Repair Successful.")
+                    AnalysisResult(**result) # Validate repaired JSON
+                    logger.info("JSON Repair Successful.")
                     
                 except Exception as retry_e:
-                    print(f"JSON Repair Failed: {retry_e}")
+                    logger.error(f"JSON Repair Failed: {retry_e}")
                     # Fallback Structure
-                    return {
-                        "status": "analysis_failed",
-                        "title": "Analysis Error",
-                        "summary": f"Failed to parse AI response: {str(decode_err)}",
-                        "action_items": [],
-                        "tags": ["Error", "Parse Fail"],
-                        "mood": "Error",
-                        "calendar_events": [],
-                        "diarization": [],
-                        "health_data": None
-                    }
+                    return AnalysisResult(
+                        title="Analysis Error",
+                        summary=f"Failed to parse AI response: {str(decode_err)}",
+                        action_items=[],
+                        tags=["Error", "Parse Fail"],
+                        mood="Error",
+                        calendar_events=[],
+                        diarization=[],
+                        health_data=None
+                    ).model_dump()
             
             # Cache Result
             if self.redis:
-                await self.redis.setex(cache_key, 604800, json.dumps(result))
+                try:
+                    await self.redis.setex(cache_key, 604800, json.dumps(result))
+                except Exception as cache_err:
+                    logger.warning(f"Failed to cache analysis result: {cache_err}")
                 
             return result
         except Exception as e:
-            print(f"DeepSeek Analysis Error: {e}")
-            return {
-                "status": "analysis_failed",
-                "title": "Analysis Failed",
-                "summary": "An error occurred while analyzing the audio.",
-                "action_items": [],
-                "tags": ["Error"],
-                "mood": "Error",
-                "calendar_events": [],
-                "diarization": [],
-                "health_data": None
-            }
+            logger.error(f"DeepSeek Analysis Error: {e}")
+            return AnalysisResult(
+                title="Analysis Failed",
+                summary="An error occurred while analyzing the audio.",
+                action_items=[],
+                tags=["Error"],
+                mood="Error",
+                calendar_events=[],
+                diarization=[],
+                health_data=None
+            ).model_dump()
 
-    async def extract_health_metrics(self, text: str, user_id: str = None, db=None) -> dict:
+    async def extract_health_metrics(self, text: str, user_id: Optional[str] = None, db: Any = None) -> Dict[str, Any]:
         """
         Extracts health-related metrics and provides trend compliments.
         """
         # 1. Fetch Previous Health Data (Context Lookup)
-        prev_health_json = "{}"
+        prev_health_json: str = "{}"
         if user_id and db:
             try:
                 # Find most recent previous note with health data
@@ -305,18 +320,18 @@ class AIService:
                         Note.health_data != {}
                     ).order_by(Note.created_at.desc()).limit(1)
                 )
-                prev_note = result.scalars().first()
+                prev_note: Optional[Note] = result.scalars().first()
                 if prev_note and prev_note.health_data:
                     prev_health_json = json.dumps(prev_note.health_data)
-                    print(f"Found historical health context for user {user_id}")
+                    logger.info(f"Found historical health context for user {user_id}")
             except Exception as e:
-                print(f"Error fetching historical health data: {e}")
+                logger.error(f"Error fetching historical health data: {e}")
 
         # 2. Setup AI Client
-        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-        deepseek_base = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+        deepseek_base: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
         
-        analysis_client = None
+        analysis_client: Optional[AsyncOpenAI] = None
         if deepseek_key:
             analysis_client = AsyncOpenAI(api_key=deepseek_key, base_url=deepseek_base)
         elif self.client:
@@ -325,7 +340,7 @@ class AIService:
         if not analysis_client:
             return {"status": "mock", "message": "API Key not set"}
             
-        default_prompt = (
+        default_prompt: str = (
             "You are a Health Data Assistant. Analyze the text for health and fitness metrics. "
             "Extract specific values like 'Steps', 'Weight', 'Sleep Duration', 'Distance Ran', 'Water Intake', 'Heart Rate'. "
             "Return a JSON object where keys are metric names (e.g., 'Weight', 'Steps') and values are strings with units (e.g., '75 kg', '8500 steps'). "
@@ -336,16 +351,12 @@ class AIService:
             "Ensure the output is strictly valid JSON."
         )
         
-        system_prompt = await self.get_system_prompt("extract_health", default_prompt)
+        system_prompt: str = await self.get_system_prompt("extract_health", default_prompt)
         
-        # Inject dynamic context if prompt still contains placeholder (optional enhancement)
-        # But here the placeholder {prev_health_json} was in the template. 
-        # If we load from DB, the DB text might contain {prev_health_json}.
-        # So we should format it.
         try:
              system_prompt = system_prompt.format(prev_health_json=prev_health_json)
-        except:
-             pass # Ignore formatting errors if keys missing
+        except Exception: # Catch KeyError if prev_health_json is not in the prompt string
+             pass 
 
         try:
             response = await analysis_client.chat.completions.create(
@@ -356,19 +367,19 @@ class AIService:
                  ],
                  response_format={ "type": "json_object" }
             )
-            content = response.choices[0].message.content
-            cleaned_content = self.clean_json_response(content)
+            content: str = response.choices[0].message.content or "{}"
+            cleaned_content: str = self.clean_json_response(content)
             try:
                 return json.loads(cleaned_content)
             except json.JSONDecodeError:
-                print(f"JSON Decode Error in extract_health_metrics. Raw content: {content}")
+                logger.error(f"JSON Decode Error in extract_health_metrics. Raw content: {content}")
                 return {}
         except Exception as e:
-            print(f"Health Extraction Error: {e}")
+            logger.error(f"Health Extraction Error: {e}")
             return {}
 
 
-    async def generate_embedding(self, text: str) -> list:
+    async def generate_embedding(self, text: str) -> List[float]:
         """
         Generate vector embedding for semantic search using OpenAI.
         """
@@ -378,26 +389,32 @@ class AIService:
 
         try:
             # Check Cache
-            text_hash = hashlib.sha256(text.encode()).hexdigest()
-            cache_key = f"cache:ai:embedding:{text_hash}"
+            text_hash: str = hashlib.sha256(text.encode()).hexdigest()
+            cache_key: str = f"cache:ai:embedding:{text_hash}"
             if self.redis:
-                cached = await self.redis.get(cache_key)
-                if cached:
-                    return json.loads(cached)
+                try:
+                    cached: Optional[str] = await self.redis.get(cache_key)
+                    if cached:
+                        return json.loads(cached)
+                except Exception as cache_err:
+                    logger.warning(f"Redis get embedding error: {cache_err}")
 
             response = await self.client.embeddings.create(
                 model="text-embedding-3-small",
                 input=text
             )
-            embedding = response.data[0].embedding
+            embedding: List[float] = response.data[0].embedding
             
             # Cache Result
             if self.redis:
-                await self.redis.setex(cache_key, 604800, json.dumps(embedding))
+                try:
+                    await self.redis.setex(cache_key, 604800, json.dumps(embedding))
+                except Exception as cache_err:
+                    logger.warning(f"Failed to cache embedding: {cache_err}")
             
             return embedding
         except Exception as e:
-            print(f"Embedding Error: {e}")
+            logger.error(f"Embedding Error: {e}")
             return [0.0] * 1536
 
     async def ask_notes(self, context: str, question: str) -> str:
@@ -409,7 +426,7 @@ class AIService:
             return "Reference Answer: This is a mock response because OPENAI_API_KEY is not set. Context was: " + context[:50] + "..."
 
         try:
-            default_prompt = (
+            default_prompt: str = (
                 "You are VoiceBrain, a helpful AI assistant. "
                 "Answer the user's question using ONLY the provided context from their notes. "
                 "If the answer is not in the context, say 'I couldn't find that information in your notes.' "
@@ -417,18 +434,21 @@ class AIService:
                 "At the end of the answer, strictly list the titles of the notes you used as sources in a section titled '**Sources:**'."
             )
             
-            system_prompt = await self.get_system_prompt("ask_notes", default_prompt)
+            system_prompt: str = await self.get_system_prompt("ask_notes", default_prompt)
             
-            user_content = f"Context:\n{context}\n\nQuestion: {question}"
+            user_content: str = f"Context:\n{context}\n\nQuestion: {question}"
 
             # Use DeepSeek if available, else gpt-4o-mini (cost effective)
-            deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+            deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
             if deepseek_key:
                 client = AsyncOpenAI(api_key=deepseek_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
                 model = "deepseek-chat"
             else:
                 client = self.client
                 model = "gpt-4o-mini"
+
+            if not client:
+                 return "AI client not available."
 
             response = await client.chat.completions.create(
                 model=model,
@@ -439,9 +459,9 @@ class AIService:
                 temperature=0.3, # Lower temperature for factual answers
                 max_tokens=500
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or "No answer generated."
         except Exception as e:
-            print(f"Ask AI Error: {e}")
+            logger.error(f"Ask AI Error: {e}")
             return "Sorry, I encountered an error while analyzing your notes."
 
     async def analyze_weekly_notes(self, notes_context: str, target_language: str = "Original") -> str:
@@ -452,11 +472,11 @@ class AIService:
             return "Mock Weekly Review: Great week! You focused on X. Mood was mostly positive."
 
         try:
-            lang_instruction = ""
+            lang_instruction: str = ""
             if target_language and target_language != "Original":
                 lang_instruction = f" CRITICAL: Write the entire review in {target_language} language."
 
-            default_prompt = (
+            default_prompt: str = (
                 "You are VoiceBrain Coach. "
                 "Analyze the user's notes from the past week. "
                 "Identify: 1. Main focus area. 2. Dominant mood pattern. 3. Procrastinated items (mentioned multiple times but seemingly not done, if any). "
@@ -465,18 +485,21 @@ class AIService:
                 f"{lang_instruction}"
             )
             
-            system_prompt = await self.get_system_prompt("weekly_review", default_prompt)
+            system_prompt: str = await self.get_system_prompt("weekly_review", default_prompt)
             if lang_instruction and "Write the entire review in" not in system_prompt:
                 system_prompt += f"\n{lang_instruction}"
             
             # Use DeepSeek or GPT-4o-mini
-            deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+            deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
             if deepseek_key:
                 client = AsyncOpenAI(api_key=deepseek_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
                 model = "deepseek-chat"
             else:
                 client = self.client
                 model = "gpt-4o-mini"
+
+            if not client:
+                 return "AI client not available."
 
             response = await client.chat.completions.create(
                 model=model,
@@ -487,9 +510,9 @@ class AIService:
                 temperature=0.7,
                 max_tokens=600
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or "No review generated."
         except Exception as e:
-            print(f"Weekly Review Error: {e}")
+            logger.error(f"Weekly Review Error: {e}")
             return "Could not generate weekly review due to an error."
 
 ai_service = AIService()

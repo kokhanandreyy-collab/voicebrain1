@@ -1,18 +1,18 @@
+from typing import List, Optional, Dict, Any
 import httpx
 import os
 import json
-import logging
+from loguru import logger
 from app.core.config import settings
 import redis.asyncio as redis
-
-logger = logging.getLogger(__name__)
+from app.core.http_client import http_client
 
 class TodoistService:
-    def __init__(self):
-        self.api_url = "https://api.todoist.com/rest/v2"
-        self.redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    def __init__(self) -> None:
+        self.api_url: str = "https://api.todoist.com/rest/v2"
+        self.redis: redis.Redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 
-    async def get_projects(self, access_token: str, user_id: str) -> list[dict]:
+    async def get_projects(self, access_token: str, user_id: str) -> List[Dict[str, Any]]:
         """
         Fetches user projects from Todoist with 60m Redis caching.
         """
@@ -20,7 +20,7 @@ class TodoistService:
         
         # 1. Check Cache
         try:
-            cached_data = await self.redis.get(cache_key)
+            cached_data: Optional[str] = await self.redis.get(cache_key)
             if cached_data:
                 return json.loads(cached_data)
         except Exception as e:
@@ -31,45 +31,49 @@ class TodoistService:
             return [{"id": "mock_inbox", "name": "Inbox"}]
 
         try:
-            from app.core.http_client import http_client
-            response = await http_client.client.get(
+            response: httpx.Response = await http_client.client.get(
                 f"{self.api_url}/projects",
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=10.0
             )
-            if response.status_code == 200:
-                projects = response.json()
-                # Store only necessary info: ID and Name
-                project_list = [{"id": p["id"], "name": p["name"]} for p in projects]
-                
-                # Cache for 60 minutes (3600s)
-                await self.redis.setex(cache_key, 3600, json.dumps(project_list))
-                return project_list
+            response.raise_for_status()
+            
+            projects: List[Dict[str, Any]] = response.json()
+            # Store only necessary info: ID and Name
+            project_list: List[Dict[str, Any]] = [{"id": p["id"], "name": p["name"]} for p in projects]
+            
+            # Cache for 60 minutes (3600s)
+            await self.redis.setex(cache_key, 3600, json.dumps(project_list))
+            return project_list
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Todoist API Error ({e.response.status_code}): {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Todoist Request Error: {e}")
         except Exception as e:
             logger.error(f"Failed to fetch Todoist projects: {e}")
             
         return []
 
-    async def sync_tasks_to_todoist(self, access_token: str, tasks: list[str], project_id: str = None, priority: int = 1) -> int:
+    async def sync_tasks_to_todoist(self, access_token: str, tasks: List[str], project_id: Optional[str] = None, priority: int = 1) -> int:
         """
         Syncs a list of tasks to Todoist.
         """
         if not access_token or access_token.startswith("mock_"):
-            print(f"[Mock Todoist] Would create tasks: {tasks} in project {project_id} with priority {priority}")
+            logger.info(f"[Mock Todoist] Would create tasks: {tasks} in project {project_id} with priority {priority}")
             return len(tasks)
 
-        created_count = 0
-        from app.core.http_client import http_client
+        created_count: int = 0
         for task_content in tasks:
                 try:
                     # Truncate title to 250 chars, move rest to description
-                    title = task_content
-                    description = ""
+                    title: str = task_content
+                    description: str = ""
                     if len(title) > 250:
                         description = title[250:]
                         title = title[:250]
                         
-                    payload = {"content": title}
+                    payload: Dict[str, Any] = {"content": title}
                     if description:
                         payload["description"] = description
                     if project_id:
@@ -77,17 +81,20 @@ class TodoistService:
                     if priority:
                         payload["priority"] = priority
 
-                    response = await http_client.client.post(
+                    response: httpx.Response = await http_client.client.post(
                         f"{self.api_url}/tasks",
                         json=payload,
                         headers={"Authorization": f"Bearer {access_token}"}
                     )
-                    if response.status_code == 200:
-                        created_count += 1
-                    else:
-                        print(f"[Todoist Error] Failed to create task '{task_content}': {response.text}")
+                    
+                    response.raise_for_status()
+                    created_count += 1
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"Todoist Task Creation API Error ({e.response.status_code}): {e.response.text}")
+                except httpx.RequestError as e:
+                    logger.error(f"Todoist Task Creation Request Error: {e}")
                 except Exception as e:
-                    print(f"[Todoist Exception] {e}")
+                    logger.error(f"Unexpected Todoist error creating task: {e}")
         
         return created_count
 

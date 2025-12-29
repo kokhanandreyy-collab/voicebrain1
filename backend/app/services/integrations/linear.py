@@ -1,14 +1,14 @@
+from typing import List, Optional, Dict, Any
 from .base import BaseIntegration
 from app.models import Integration, Note
 import httpx
-import logging
 
 class LinearIntegration(BaseIntegration):
-    async def sync(self, integration: Integration, note: Note):
+    async def sync(self, integration: Integration, note: Note) -> None:
         self.logger.info(f"Syncing note {note.id} to Linear")
         
-        token = integration.auth_token
-        team_id = (integration.settings or {}).get("team_id")
+        token: Optional[str] = integration.auth_token
+        team_id: Optional[str] = (integration.settings or {}).get("team_id")
         
         if not team_id:
              self.logger.warning("No Team ID configured for Linear integration.")
@@ -18,12 +18,12 @@ class LinearIntegration(BaseIntegration):
             self.logger.info("No action items to sync to Linear.")
             return
 
-        headers = {
+        headers: Dict[str, str] = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
 
-        url = "https://api.linear.app/graphql"
+        url: str = "https://api.linear.app/graphql"
 
         mutation = """
         mutation IssueCreate($input: IssueCreateInput!) {
@@ -38,11 +38,11 @@ class LinearIntegration(BaseIntegration):
         }
         """
 
-        for item in note.action_items:
+        for item in (note.action_items or []):
             # Description includes summary + link to VoiceBrain source
-            description = f"{note.summary or 'No summary provided.'}\n\n---\nExtracted from VoiceBrain Note: https://voicebrain.app/notes/{note.id}"
+            description: str = f"{note.summary or 'No summary provided.'}\n\n---\nExtracted from VoiceBrain Note: https://voicebrain.app/notes/{note.id}"
             
-            variables = {
+            variables: Dict[str, Any] = {
                     "input": {
                     "teamId": team_id,
                     "title": str(item)[:250],
@@ -51,25 +51,28 @@ class LinearIntegration(BaseIntegration):
             }
 
             try:
-                response = await self.request(
+                response: httpx.Response = await self.request(
                     "POST",
                     url, 
                     headers=headers, 
                     json={"query": mutation, "variables": variables}
                 )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        if "errors" in data:
-                             self.logger.error(f"Linear GraphQL Error: {data['errors']}")
-                             # Consider raising if critical, but for multi-item, maybe logging is safer?
-                             # Let's count it as error for the log.
-                        else:
-                             issue = data.get("data", {}).get("issueCreate", {}).get("issue", {})
-                             self.logger.info(f"Created Linear Issue: {issue.get('title')} ({issue.get('url')})")
-                    else:
-                        self.logger.error(f"Linear API Error ({response.status_code}): {response.text}")
+                
+                response.raise_for_status()
+                data: Dict[str, Any] = response.json()
+                
+                if "errors" in data:
+                     self.logger.error(f"Linear GraphQL Error: {data['errors']}")
+                else:
+                     issue: Dict[str, Any] = data.get("data", {}).get("issueCreate", {}).get("issue", {})
+                     self.logger.info(f"Created Linear Issue: {issue.get('title')} ({issue.get('url')})")
                         
-                except Exception as e:
-                    self.logger.error(f"Failed to create Linear issue for '{item}': {e}")
-                    raise e
+            except httpx.HTTPStatusError as e:
+                self.logger.error(f"Linear API Status Error ({e.response.status_code}): {e.response.text}")
+                raise
+            except httpx.RequestError as e:
+                self.logger.error(f"Linear API Request Error: {e}")
+                raise
+            except Exception as e:
+                self.logger.error(f"Failed to create Linear issue for '{item}': {e}")
+                raise

@@ -45,6 +45,10 @@ async def step_sync_integrations(note: Note, db) -> None:
         if integration.provider == "readwise":
             sync_readwise.delay(note.id)
             continue
+
+        if integration.provider == "obsidian":
+            sync_obsidian.delay(note.id)
+            continue
             
         handler = get_integration_handler(integration.provider)
         if handler:
@@ -175,6 +179,20 @@ async def _sync_readwise_async(note_id: str) -> None:
 def sync_readwise(note_id: str):
     async_to_sync(_sync_readwise_async)(note_id)
     return {"status": "synced_readwise", "note_id": note_id}
+
+async def _sync_obsidian_async(note_id: str) -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        from app.services.integrations.obsidian_service import obsidian_service
+        await obsidian_service.create_or_update_note(note.user_id, note.id, note.transcription_text)
+
+@celery.task(name="sync.obsidian")
+def sync_obsidian(note_id: str):
+    async_to_sync(_sync_obsidian_async)(note_id)
+    return {"status": "synced_obsidian", "note_id": note_id}
 
 @celery.task(name="sync.process_note")
 def process_sync(note_id: str):

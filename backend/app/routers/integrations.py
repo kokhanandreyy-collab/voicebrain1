@@ -509,3 +509,13 @@ async def connect_readwise(
     from app.services.integrations.readwise_service import readwise_service
     status = await readwise_service.connect(current_user.id, token)
     return {"status": status}
+
+@router.post("/obsidian/connect")
+async def connect_obsidian(
+    vault_path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Obsidian/Logseq local vault."""
+    from app.services.integrations.obsidian_service import obsidian_service
+    status = await obsidian_service.connect(current_user.id, vault_path)
+    return {"status": status}

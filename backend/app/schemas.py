@@ -83,6 +83,7 @@ class NoteResponse(NoteBase):
     tags: List[str] = []
     mood: Optional[str] = None
     google_maps_url: Optional[str] = None
+    yandex_maps_url: Optional[str] = None
     status: str = "COMPLETED"
     processing_step: Optional[str] = None
     created_at: datetime

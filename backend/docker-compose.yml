@@ -40,6 +40,9 @@ services:
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY}
+      - YANDEX_OAUTH_CLIENT_ID=${YANDEX_OAUTH_CLIENT_ID}
+      - YANDEX_OAUTH_CLIENT_SECRET=${YANDEX_OAUTH_CLIENT_SECRET}
     ports:
       - "8000:8000"
     depends_on:
@@ -61,6 +64,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY}
     depends_on:
       - db
       - redis
@@ -80,6 +84,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY}
     depends_on:
       - db
       - redis
@@ -99,6 +104,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - YANDEX_MAPS_API_KEY=${YANDEX_MAPS_API_KEY}
     depends_on:
       - db
       - redis

@@ -113,6 +113,7 @@ class Note(Base):
     # UI Metadata
     mood = Column(String, nullable=True)
     google_maps_url = Column(String, nullable=True)
+    yandex_maps_url = Column(String, nullable=True)
 
     # Agentic Workflow Metadata (Hidden fields for pipeline)
     ai_analysis = Column(JSON, nullable=True) # Full raw analysis
@@ -142,6 +143,7 @@ class Integration(Base):
     encrypted_access_token = Column(LargeBinary, nullable=True)
     encrypted_refresh_token = Column(LargeBinary, nullable=True)
     google_maps_access_token = Column(LargeBinary, nullable=True)
+    yandex_maps_access_token = Column(LargeBinary, nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     config = Column(JSON, default={}) # e.g. default_database_id
     is_active = Column(Boolean, default=True)

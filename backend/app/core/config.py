@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: Optional[str] = None
     GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
     GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
+    
+    # Yandex Maps
+    YANDEX_MAPS_API_KEY: Optional[str] = None
+    YANDEX_OAUTH_CLIENT_ID: Optional[str] = None
+    YANDEX_OAUTH_CLIENT_SECRET: Optional[str] = None
 
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None

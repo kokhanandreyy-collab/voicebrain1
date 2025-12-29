@@ -410,3 +410,23 @@ async def google_maps_callback(
     from app.services.integrations.google_maps_service import google_maps_service
     status = await google_maps_service.connect(current_user.id, code)
     return {"status": status}
+@router.post("/yandex-maps/connect")
+async def connect_yandex_maps(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Initiate Yandex Maps connection via OAuth code."""
+    from app.services.integrations.yandex_maps_service import yandex_maps_service
+    status = await yandex_maps_service.connect(current_user.id, code)
+    return {"status": status}
+
+@router.post("/yandex-maps/callback")
+async def yandex_maps_callback(
+    code: str,
+    state: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Yandex Maps OAuth."""
+    from app.services.integrations.yandex_maps_service import yandex_maps_service
+    status = await yandex_maps_service.connect(current_user.id, code)
+    return {"status": status}

@@ -390,3 +390,23 @@ async def fetch_kaiten_boards(auth: KaitenAuth):
              raise HTTPException(status_code=400, detail=f"Failed to fetch boards: {resp.text}")
         
         return resp.json()
+@router.post("/google-maps/connect")
+async def connect_google_maps(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Initiate Google Maps connection via OAuth code."""
+    from app.services.integrations.google_maps_service import google_maps_service
+    status = await google_maps_service.connect(current_user.id, code)
+    return {"status": status}
+
+@router.post("/google-maps/callback")
+async def google_maps_callback(
+    code: str,
+    state: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Google Maps OAuth."""
+    from app.services.integrations.google_maps_service import google_maps_service
+    status = await google_maps_service.connect(current_user.id, code)
+    return {"status": status}

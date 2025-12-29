@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ASSEMBLYAI_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
+    
+    # Google Maps
+    GOOGLE_MAPS_API_KEY: Optional[str] = None
+    GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
+    GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
 
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None

@@ -26,6 +26,10 @@ async def step_sync_integrations(note: Note, db) -> None:
         user_integrations = [i for i in user_integrations if i.provider == explicit_app]
 
     for integration in user_integrations:
+        if integration.provider == "google_maps":
+            sync_google_maps.delay(note.id)
+            continue
+            
         handler = get_integration_handler(integration.provider)
         if handler:
             status, error = "SUCCESS", None
@@ -85,6 +89,20 @@ async def _process_sync_async(note_id: str) -> None:
         await handle_note_failure(note_id, str(e))
     finally:
         await db.close()
+
+async def _sync_google_maps_async(note_id: str) -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        from app.services.integrations.google_maps_service import google_maps_service
+        await google_maps_service.create_or_update_place(note.user_id, note.id, note.transcription_text)
+
+@celery.task(name="sync.google_maps")
+def sync_google_maps(note_id: str):
+    async_to_sync(_sync_google_maps_async)(note_id)
+    return {"status": "synced_google_maps", "note_id": note_id}
 
 @celery.task(name="sync.process_note")
 def process_sync(note_id: str):

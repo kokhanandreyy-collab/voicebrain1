@@ -43,11 +43,14 @@ async def step_embed_and_save(note: Note, text: str, analysis: Dict[str, Any], d
 
 
 
-async def step_get_rag_context(user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
-    """Fetch top 5 similar notes for RAG context."""
+from sqlalchemy import desc
+from app.utils.redis import short_term_memory
+from app.models import LongTermSummary
+
+async def step_get_medium_term_context(user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
+    """Fetch top 5 similar notes (Medium-Term Memory)."""
     try:
         query_vector = await ai_service.generate_embedding(text)
-        # Cosine distance < 0.3 means similarity > 0.7
         result = await db.execute(
             select(Note)
             .join(NoteEmbedding)
@@ -59,16 +62,29 @@ async def step_get_rag_context(user_id: str, note_id: str, text: str, db: AsyncS
         
         context_parts = []
         for n in notes:
-            # Simple threshold check in python if needed, or rely on SQL sort + limit
-            # But the user asked for threshold 0.7.
-            # We can use a filter in SQL: .where(NoteEmbedding.embedding.cosine_distance(query_vector) < 0.3)
-            context_parts.append(f"Note: {n.title}\nSummary: {n.summary or 'No summary'}\nContent: {n.transcription_text[:200]}...")
+            # Mask sensitive or too long content
+            summary_part = n.summary[:300] if n.summary else "No summary"
+            context_parts.append(f"Note: {n.title}\nSummary: {summary_part}")
         
-        if not context_parts:
-            return ""
-        return "\n---\n".join(context_parts)
+        return "\n".join(context_parts) if context_parts else "No recent related context found."
     except Exception as e:
-        logger.error(f"RAG Context retrieval failed: {e}")
+        logger.error(f"Medium-Term retrieval failed: {e}")
+        return ""
+
+async def step_get_long_term_memory(user_id: str, db: AsyncSession) -> str:
+    """Fetch top 3 high-importance long-term summaries."""
+    try:
+        result = await db.execute(
+            select(LongTermSummary)
+            .where(LongTermSummary.user_id == user_id)
+            .order_by(desc(LongTermSummary.importance_score))
+            .limit(3)
+        )
+        summaries = list(result.scalars().all())
+        parts = [f"- {s.summary_text}" for s in summaries]
+        return "\n".join(parts) if parts else "No long-term knowledge recorded yet."
+    except Exception as e:
+        logger.error(f"Long-Term retrieval failed: {e}")
         return ""
 
 async def _process_analyze_async(note_id: str) -> None:
@@ -79,7 +95,7 @@ async def _process_analyze_async(note_id: str) -> None:
         note = result.scalars().first()
         if not note: return
 
-        # Fetch Context
+        # 1. Fetch User Data
         user_bio: Optional[str] = None
         target_lang: str = "Original"
         u_res = await db.execute(select(User).where(User.id == note.user_id))
@@ -87,19 +103,47 @@ async def _process_analyze_async(note_id: str) -> None:
         if user:
             user_bio, target_lang = user.bio, user.target_language or "Original"
 
-        # RAG Search
-        note.processing_step = "🔍 Searching related notes..."
+        # 2. Fetch Hierarchical Memory
+        note.processing_step = "🧠 Recalling memories..."
         await db.commit()
-        rag_context = await step_get_rag_context(note.user_id, note.id, note.transcription_text, db)
 
-        # Analyze
+        # Short-Term (Redis list of last 10 actions/messages)
+        st_history = await short_term_memory.get_history(note.user_id)
+        short_term_str = "\n".join([f"- {item.get('text', str(item))}" for item in st_history]) if st_history else "No recent history."
+
+        # Medium-Term (Semantic Search)
+        medium_term_str = await step_get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
+
+        # Long-Term (High Importance Summaries)
+        long_term_str = await step_get_long_term_memory(note.user_id, db)
+
+        # 3. Format Combined Context
+        hierarchical_context = (
+            f"Short-term (Last actions):\n{short_term_str}\n\n"
+            f"Recent context (Related notes):\n{medium_term_str}\n\n"
+            f"Long-term knowledge (General themes):\n{long_term_str}"
+        )
+
+        # 4. Analyze with Context
+        note.processing_step = "🤖 AI Analysis..."
+        await db.commit()
+        
         analysis = await ai_service.analyze_text(
             note.transcription_text, 
             user_context=user_bio, 
             target_language=target_lang,
-            previous_context=rag_context
+            previous_context=hierarchical_context
         )
+
+        # 5. Save results and trigger next stage
         await step_embed_and_save(note, note.transcription_text, analysis, db)
+        
+        # Track this analysis as a short-term action for future context
+        await short_term_memory.add_action(note.user_id, {
+            "type": "note_analyzed",
+            "title": analysis.get("title"),
+            "text": f"Analyzed note: {analysis.get('title')}. Summary: {analysis.get('summary')[:100]}..."
+        })
         
         note.processing_step = "🚀 Syncing with apps..."
         await db.commit()

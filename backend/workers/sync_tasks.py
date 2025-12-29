@@ -53,6 +53,10 @@ async def step_sync_integrations(note: Note, db) -> None:
         if integration.provider == "yandex_tasks":
             sync_yandex_tasks.delay(note.id)
             continue
+
+        if integration.provider in ["2gis", "mapsme"]:
+            sync_maps.delay(note.id, integration.provider)
+            continue
             
         handler = get_integration_handler(integration.provider)
         if handler:
@@ -211,6 +215,23 @@ async def _sync_yandex_tasks_async(note_id: str) -> None:
 def sync_yandex_tasks(note_id: str):
     async_to_sync(_sync_yandex_tasks_async)(note_id)
     return {"status": "synced_yandex_tasks", "note_id": note_id}
+
+async def _sync_maps_async(note_id: str, provider: str) -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        from app.services.integrations.maps_service import maps_service
+        if provider == "2gis":
+            await maps_service.create_or_update_place_2gis(note.user_id, note.id, note.transcription_text)
+        elif provider == "mapsme":
+            await maps_service.create_or_update_place_mapsme(note.user_id, note.id, note.transcription_text)
+
+@celery.task(name="sync.maps")
+def sync_maps(note_id: str, provider: str):
+    async_to_sync(_sync_maps_async)(note_id, provider)
+    return {"status": "synced_maps", "provider": provider, "note_id": note_id}
 
 @celery.task(name="sync.process_note")
 def process_sync(note_id: str):

@@ -539,3 +539,44 @@ async def yandex_tasks_callback(
     from app.services.integrations.yandex_tasks_service import yandex_tasks_service
     await yandex_tasks_service.connect(current_user.id, code)
     return {"status": "Connected"}
+
+@router.post("/2gis/connect")
+async def connect_2gis(
+    token: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect 2GIS account."""
+    async with AsyncSessionLocal() as db:
+        # Simplified storage
+        from app.models import Integration
+        from sqlalchemy.future import select
+        from app.core.security import encrypt_token
+        
+        result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "2gis"))
+        it = result.scalars().first()
+        if not it:
+            it = Integration(user_id=current_user.id, provider="2gis")
+            db.add(it)
+        it.twogis_token = encrypt_token(token)
+        await db.commit()
+    return {"status": "Connected to 2GIS"}
+
+@router.post("/mapsme/connect")
+async def connect_mapsme(
+    path: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Maps.me by providing KML path."""
+    async with AsyncSessionLocal() as db:
+        from app.models import Integration
+        from sqlalchemy.future import select
+        from app.core.security import encrypt_token
+        
+        result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "mapsme"))
+        it = result.scalars().first()
+        if not it:
+            it = Integration(user_id=current_user.id, provider="mapsme")
+            db.add(it)
+        it.mapsme_path = encrypt_token(path)
+        await db.commit()
+    return {"status": "Connected to Maps.me vault"}

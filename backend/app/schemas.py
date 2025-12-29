@@ -88,6 +88,8 @@ class NoteResponse(NoteBase):
     readwise_highlight_id: Optional[str] = None
     obsidian_note_path: Optional[str] = None
     yandex_task_id: Optional[str] = None
+    twogis_url: Optional[str] = None
+    mapsme_url: Optional[str] = None
     status: str = "COMPLETED"
     processing_step: Optional[str] = None
     created_at: datetime

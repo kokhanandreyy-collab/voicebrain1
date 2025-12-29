@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=voicebrain
+      - POSTGRES_PASSWORD=voicebrain_secret
+      - POSTGRES_DB=voicebrain_db
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+    depends_on:
+      - db
+      - redis
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      # Inherit other env vars if needed
+    depends_on:
+      - db
+      - redis
+    command: python run_bot.py
+
+volumes:
+  postgres_data:

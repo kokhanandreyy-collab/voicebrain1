@@ -1,0 +1,43 @@
+{
+    "name": "VoiceBrain",
+    "short_name": "VoiceBrain",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#2563EB",
+    "description": "Your Second Brain, Powered by Voice.",
+    "icons": [
+        {
+            "src": "logo.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "share_target": {
+        "action": "/share-receive",
+        "method": "POST",
+        "enctype": "multipart/form-data",
+        "params": {
+            "title": "title",
+            "text": "text",
+            "url": "url",
+            "files": [
+                {
+                    "name": "media",
+                    "accept": [
+                        "audio/*",
+                        "audio/m4a",
+                        "audio/mp3",
+                        "audio/wav",
+                        "audio/webm"
+                    ]
+                }
+            ]
+        }
+    }
+}

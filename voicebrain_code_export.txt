@@ -1,0 +1,350 @@
+================================================================================
+FILE: docker-compose.yml
+================================================================================
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=voicebrain
+      - POSTGRES_PASSWORD=voicebrain_secret
+      - POSTGRES_DB=voicebrain_db
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.worker.celery worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+    depends_on:
+      - db
+      - redis
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - SECRET_KEY=super_secret_dev_key
+      - OPENAI_API_KEY=sk-placeholder
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    depends_on:
+      - db
+      - redis
+    command: python run_bot.py
+
+volumes:
+  postgres_data:
+
+================================================================================
+FILE: backend/requirements.txt
+================================================================================
+fastapi>=0.109.0,<0.111.0
+pydantic>=2.6.0
+uvicorn[standard]>=0.27.0
+gunicorn>=21.2.0
+sqlalchemy>=2.0.25
+asyncpg
+python-multipart>=0.0.9
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1
+httpx
+pydantic-settings>=2.1.0
+uuid
+python-dotenv
+alembic
+email-validator
+celery==5.3.6
+redis==5.0.1
+openai==1.3.5
+pgvector
+fastapi-limiter
+scikit-learn
+sqlalchemy-utils
+cryptography
+notion-client
+aiogoogle
+python-dateutil
+slack-sdk
+fastapi-mail
+google-api-python-client
+evernote3
+psycopg2-binary
+pytest
+pytest-asyncio
+aiogram
+
+================================================================================
+FILE: web/package.json
+================================================================================
+{
+    "name": "voicebrain-web",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@ffmpeg/ffmpeg": "^0.12.15",
+        "@ffmpeg/util": "^0.12.2",
+        "@headlessui/react": "^2.2.9",
+        "axios": "^1.6.2",
+        "clsx": "^2.0.0",
+        "cmdk": "^1.1.1",
+        "framer-motion": "^10.16.16",
+        "lucide-react": "^0.294.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-markdown": "^9.0.0",
+        "react-router-dom": "^6.20.1",
+        "recharts": "^3.6.0",
+        "tailwind-merge": "^2.1.0",
+        "wavesurfer.js": "^7.12.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.4",
+        "@types/react": "^18.2.43",
+        "@types/react-dom": "^18.2.17",
+        "@vitejs/plugin-react": "^4.2.1",
+        "autoprefixer": "^10.4.16",
+        "postcss": "^8.4.32",
+        "tailwindcss": "^3.3.6",
+        "typescript": "^5.3.3",
+        "vite": "^5.0.8"
+    }
+}
+
+================================================================================
+FILE: backend/app/main.py
+================================================================================
+from fastapi import FastAPI, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.http_client import http_client
+import os
+
+app = FastAPI(title="VoiceBrain API")
+
+import os
+# Secure CORS
+origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+async def startup():
+    http_client.start()
+    from fastapi_limiter import FastAPILimiter
+    import redis.asyncio as redis
+    redis_url = "redis://redis:6379"
+    try:
+        r = redis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(r)
+        print("Rate Limiter initialized")
+    except Exception as e:
+         print(f"Rate Limiter Init Failed: {e}. Falling back to no limits.")
+
+@app.on_event("shutdown")
+async def shutdown():
+    await http_client.stop()
+
+from fastapi import Depends
+from fastapi_limiter.depends import RateLimiter
+from app.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users
+
+api_router = APIRouter(dependencies=[Depends(RateLimiter(times=100, seconds=60))])
+
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(oauth.router, prefix="/auth", tags=["oauth"])
+api_router.include_router(notes.router, prefix="/notes", tags=["notes"])
+api_router.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
+api_router.include_router(exports.router, prefix="/export", tags=["export"])
+api_router.include_router(payment.router, prefix="/payment", tags=["payment"])
+api_router.include_router(tags.router, prefix="/tags", tags=["tags"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(users.router, prefix="/users", tags=["users"])
+
+app.include_router(api_router, prefix="/api/v1")
+
+@app.get("/")
+async def root():
+    return {"message": "VoiceBrain API v1"}
+
+================================================================================
+FILE: backend/app/models.py
+================================================================================
+from sqlalchemy import Column, String, Boolean, Integer, JSON, LargeBinary, DateTime, ForeignKey, Table, Text, Float
+from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.sql import func
+import uuid
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    tier = Column(String, default="free")
+    telegram_chat_id = Column(String, nullable=True)
+    notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
+    integrations = relationship("Integration", back_populates="user")
+
+class Note(Base):
+    __tablename__ = "notes"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
+    title = Column(String, nullable=True)
+    transcription_text = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    status = Column(String, default="PENDING")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    user = relationship("User", back_populates="notes")
+
+class Integration(Base):
+    __tablename__ = "integrations"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
+    provider = Column(String, nullable=False)
+    access_token = Column(String, nullable=False)
+    settings = Column(JSON, default={})
+    user = relationship("User", back_populates="integrations")
+
+================================================================================
+FILE: backend/app/core/config.py
+================================================================================
+import os
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "VoiceBrain"
+    SECRET_KEY: str
+    DATABASE_URL: str = "postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db"
+    OPENAI_API_KEY: str
+    class Config:
+        case_sensitive = True
+        env_file = ".env"
+
+settings = Settings()
+
+================================================================================
+FILE: backend/app/routers/notes.py (TRUNCATED)
+================================================================================
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from app.core.database import get_db
+from app.models import Note, User
+from app.schemas import NoteResponse
+from app.dependencies import get_current_user
+
+router = APIRouter()
+
+@router.post("/upload", response_model=NoteResponse)
+async def upload_note(file: UploadFile = File(...), current_user: User = Depends(get_current_user), db=Depends(get_db)):
+    # Logic for audio upload and Celery task triggering
+    pass
+
+@router.get("", response_model=list[NoteResponse])
+async def get_notes(current_user: User = Depends(get_current_user), db=Depends(get_db)):
+    # Fetch notes for current user
+    pass
+
+================================================================================
+FILE: web/src/App.tsx
+================================================================================
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import LandingPage from './pages/LandingPage';
+
+function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
+
+export default App;
+
+================================================================================
+FILE: backend/Dockerfile
+================================================================================
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+
+================================================================================
+FILE: web/Dockerfile
+================================================================================
+FROM node:18-alpine as build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

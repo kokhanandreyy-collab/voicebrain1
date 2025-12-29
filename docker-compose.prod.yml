@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  db:
+    image: ankane/pgvector:latest
+    restart: always
+    environment:
+      POSTGRES_USER: voicebrain
+      POSTGRES_PASSWORD: voicebrain_secret
+      POSTGRES_DB: voicebrain_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000" # No reload in prod
+    volumes:
+      - ./backend:/app
+      - ./backend/temp_storage:/app/temp_storage
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Keys should be injected via .env file in production
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: sh -c "pip install -r requirements.txt && celery -A app.worker.celery worker --loglevel=info"
+    volumes:
+      - ./backend:/app
+      - ./backend/temp_storage:/app/temp_storage
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    # Nginx serves on port 80
+    ports:
+      - "80:80"
+    volumes:
+      - ./web:/app
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

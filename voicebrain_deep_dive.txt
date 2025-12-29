@@ -1,0 +1,271 @@
+================================================================================
+FILE: backend/app/routers/notes.py
+================================================================================
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import or_, update
+from typing import List
+from app.core.database import get_db
+from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
+from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote
+from app.services.ai_service import ai_service
+from app.dependencies import get_current_user
+from typing import Optional
+from datetime import datetime, timezone, timedelta
+from fastapi_limiter.depends import RateLimiter
+import uuid
+import os
+import shutil
+import tempfile
+
+router = APIRouter()
+from app.core.storage import storage_client
+
+@router.post("/upload", response_model=NoteResponse)
+async def upload_note(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from fastapi_limiter import FastAPILimiter
+    limit = 10 if current_user.tier == "free" else 50
+    key = f"limit/upload/{current_user.id}"
+    redis_conn = FastAPILimiter.redis
+    if redis_conn:
+        try:
+             current_usage = await redis_conn.incr(key)
+             if current_usage == 1:
+                 await redis_conn.expire(key, 3600)
+             if current_usage > limit:
+                 ttl = await redis_conn.ttl(key)
+                 raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Try again in {ttl} seconds.")
+        except Exception as e:
+             print(f"Rate limit check failed: {e}")
+    
+    file_ext = file.filename.split('.')[-1] if '.' in file.filename else "webm"
+    fd, temp_path = tempfile.mkstemp(suffix=f".{file_ext}")
+    os.close(fd)
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    file_size = os.path.getsize(temp_path)
+    duration_est = max(1, file_size // 16000) 
+    
+    current_tier_limits = TIER_LIMITS.get(current_user.tier, TIER_LIMITS["free"])
+    monthly_limit = current_tier_limits["monthly_transcription_seconds"]
+    now = datetime.now(timezone.utc)
+    should_reset = False
+    if not current_user.billing_cycle_start:
+         current_user.billing_cycle_start = now
+         should_reset = True
+    if current_user.tier == "free":
+        if current_user.billing_cycle_start.month != now.month or current_user.billing_cycle_start.year != now.year:
+            should_reset = True
+            current_user.billing_cycle_start = now 
+    else:
+        diff = now - current_user.billing_cycle_start.replace(tzinfo=None)
+        if diff.days >= 30:
+             should_reset = True
+             current_user.billing_cycle_start = now
+    if should_reset:
+        current_user.monthly_usage_seconds = 0
+        db.add(current_user)
+    if monthly_limit != float('inf'):
+        if current_user.monthly_usage_seconds + duration_est > monthly_limit:
+             if os.path.exists(temp_path):
+                 os.remove(temp_path)
+             raise HTTPException(status_code=403, detail=f"Limit reached.")
+
+    file_key = f"{current_user.id}/{uuid.uuid4()}.{file_ext}"
+    try:
+        with open(temp_path, "rb") as f_in:
+            audio_url = await storage_client.upload_file(f_in, file_key, content_type=file.content_type or "audio/webm")
+    except Exception as e:
+        if os.path.exists(temp_path): os.remove(temp_path)
+        raise e
+    if os.path.exists(temp_path): os.remove(temp_path)
+
+    new_note = Note(
+        user_id=current_user.id, audio_url=audio_url, storage_key=file_key,
+        title="Processing...", status="PROCESSING", duration_seconds=duration_est,
+        summary="Analysis in progress...", transcription_text="", processing_step="☁️ Uploading..."
+    )
+    db.add(new_note)
+    
+    # Streak Logic
+    today = now.date()
+    last = current_user.last_note_date.date() if current_user.last_note_date else None
+    if last != today:
+        if last == today - timedelta(days=1):
+            current_user.streak_days = (current_user.streak_days or 0) + 1
+        else:
+            current_user.streak_days = 1
+    current_user.last_note_date = now
+    current_user.monthly_usage_seconds += duration_est
+    await db.commit()
+    await db.refresh(new_note)
+
+    from app.worker import process_note_task
+    try:
+        if os.getenv("CELERY_BROKER_URL"): process_note_task.delay(new_note.id)
+        else: process_note_task(new_note.id)
+    except Exception as e:
+        print(f"Worker Error: {e}")
+    return new_note
+
+@router.get("", response_model=List[NoteResponse])
+async def get_notes(skip: int = 0, limit: int = 100, q: Optional[str] = None, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    query = select(Note).where(Note.user_id == current_user.id)
+    if q:
+        query_embedding = await ai_service.generate_embedding(q)
+        query = query.order_by(Note.embedding.cosine_distance(query_embedding))
+    notes_res = await db.execute(query.limit(limit).offset(skip))
+    notes = notes_res.scalars().all()
+    await attach_integration_status(db, notes)
+    return notes
+
+# ... (Additional routes for ask, delete, update, etc.)
+
+================================================================================
+FILE: backend/app/worker.py
+================================================================================
+import asyncio
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+import inspect
+from urllib.parse import urlparse
+from asgiref.sync import async_to_sync
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+from app.celery_app import celery
+from app.services.ai_service import ai_service
+from app.models import Note, Integration, User, IntegrationLog, NoteEmbedding, UserTier
+from app.core.database import AsyncSessionLocal
+from app.core.storage import storage_client
+from app.services.integrations import get_integration_handler
+from app.core.http_client import http_client 
+
+logger = logging.getLogger(__name__)
+
+async def _process_note_async(note_id: str):
+    logger.info(f"Processing note: {note_id}")
+    http_client.start()
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        content = await step_download_audio(note, db)
+        content = await step_remove_silence(content)
+        text, duration = await step_transcribe(content)
+        analysis = await step_analyze(text)
+        await step_embed_and_save(note, text, analysis, db)
+        await step_sync_integrations(note, db)
+        
+        note.status = "COMPLETED"
+        await db.commit()
+        # Notifications logic...
+
+@celery.task(name="process_note")
+def process_note_task(note_id: str):
+    async_to_sync(_process_note_async)(note_id)
+    return {"status": "success"}
+
+================================================================================
+FILE: backend/run_bot.py
+================================================================================
+import asyncio
+import logging
+from app.services.telegram_bot import start_bot
+
+logging.basicConfig(level=logging.INFO)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(start_bot())
+    except KeyboardInterrupt:
+        print("Bot stopped!")
+
+================================================================================
+FILE: backend/app/services/telegram_bot.py
+================================================================================
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from app.core.bot import bot
+from app.core.database import AsyncSessionLocal
+from app.models import User, Note
+from app.core.storage import storage_client
+from app.worker import process_note_task
+
+dp = Dispatcher()
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    # Link account logic using API Key
+    pass
+
+@dp.message(F.voice)
+async def handle_voice(message: types.Message):
+    # Download from TG, upload to S3, create Note, trigger worker
+    pass
+
+async def start_bot():
+    if bot: await dp.start_polling(bot)
+
+================================================================================
+FILE: backend/app/routers/integrations.py
+================================================================================
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from app.core.database import get_db
+from app.models import User, Integration
+from app.schemas import IntegrationCreate, IntegrationResponse
+from app.dependencies import get_current_user
+
+router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+@router.get("/config")
+async def get_integrations_config():
+    return [
+        {"id": "notion", "name": "Notion"},
+        {"id": "slack", "name": "Slack"},
+        {"id": "todoist", "name": "Todoist"},
+        {"id": "google_drive", "name": "Google Drive"},
+        {"id": "vk", "name": "VKontakte"},
+        # ... others
+    ]
+
+@router.post("/callback")
+async def integration_callback(data: CallbackRequest, current_user=Depends(get_current_user), db=Depends(get_db)):
+    # OAuth flow: Exchange code, save tokens
+    pass
+
+================================================================================
+FILE: backend/app/schemas.py
+================================================================================
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
+from datetime import datetime
+
+class NoteResponse(BaseModel):
+    id: str
+    title: Optional[str]
+    transcription_text: Optional[str]
+    summary: Optional[str]
+    action_items: List[str] = []
+    tags: List[str] = []
+    status: str
+    created_at: datetime
+    class Config: from_attributes = True
+
+class NoteUpdate(BaseModel):
+    title: Optional[str]
+    summary: Optional[str]
+    transcription_text: Optional[str]
+    tags: Optional[List[str]]

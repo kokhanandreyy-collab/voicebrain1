@@ -1,0 +1,19 @@
+# VoiceBrain - AI Voice Notes & Second Brain Assistant
+
+VoiceBrain turns voice recordings into structured notes, action items, and summaries. It syncs automatically with Notion, Todoist, Obsidian, and 20+ other apps.
+
+## Key Features
+*   **Audio Transcription**: 99% accuracy via AssemblyAI.
+*   **AI Analysis**: DeepSeek V3 extracts intents, tasks, and calendar events.
+*   **Integrations**: Syncs with Linear, Jira, Slack, Google Calendar, and more.
+*   **Telegram Bot**: Quick capture directly from your messaging app.
+
+## Pricing
+*   **Free**: 120 mins/mo.
+*   **Pro**: $9.99/mo (1200 mins + Integrations).
+*   **Premium**: $19/mo (Unlimited + RAG).
+
+## Technical Details
+*   **Platform**: PWA (Progressive Web App).
+*   **Security**: SOC2 compliant logic, secure data encryption.
+*   **Performance**: Fast, edge-optimized architecture.

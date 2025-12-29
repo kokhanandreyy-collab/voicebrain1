@@ -499,3 +499,13 @@ async def outlook_callback(
     from app.services.integrations.email_service import email_service
     await email_service.connect_outlook(current_user.id, code)
     return {"status": "Connected"}
+
+@router.post("/readwise/connect")
+async def connect_readwise(
+    token: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Readwise."""
+    from app.services.integrations.readwise_service import readwise_service
+    status = await readwise_service.connect(current_user.id, token)
+    return {"status": status}

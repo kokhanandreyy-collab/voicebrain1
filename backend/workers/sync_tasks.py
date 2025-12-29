@@ -41,6 +41,10 @@ async def step_sync_integrations(note: Note, db) -> None:
         if integration.provider in ["gmail", "outlook"]:
             sync_email.delay(note.id, integration.provider)
             continue
+
+        if integration.provider == "readwise":
+            sync_readwise.delay(note.id)
+            continue
             
         handler = get_integration_handler(integration.provider)
         if handler:
@@ -157,6 +161,20 @@ async def _sync_email_async(note_id: str, provider: str) -> None:
 def sync_email(note_id: str, provider: str):
     async_to_sync(_sync_email_async)(note_id, provider)
     return {"status": "synced_email", "provider": provider, "note_id": note_id}
+
+async def _sync_readwise_async(note_id: str) -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        from app.services.integrations.readwise_service import readwise_service
+        await readwise_service.create_or_update_highlight(note.user_id, note.id, note.transcription_text)
+
+@celery.task(name="sync.readwise")
+def sync_readwise(note_id: str):
+    async_to_sync(_sync_readwise_async)(note_id)
+    return {"status": "synced_readwise", "note_id": note_id}
 
 @celery.task(name="sync.process_note")
 def process_sync(note_id: str):

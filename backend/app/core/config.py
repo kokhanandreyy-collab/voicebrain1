@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     GMAIL_CLIENT_SECRET: Optional[str] = None
     OUTLOOK_CLIENT_ID: Optional[str] = None
     OUTLOOK_CLIENT_SECRET: Optional[str] = None
+    
+    # Readwise
+    READWISE_API_KEY: Optional[str] = None
 
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None

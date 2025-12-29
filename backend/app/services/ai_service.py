@@ -32,38 +32,38 @@ class AIService:
             "authorization": aai_key
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                # 1. Upload
-                # AssemblyAI expects raw bytes in body
-                print("Uploading audio to AssemblyAI...")
-                upload_res = await client.post(
-                    "https://api.assemblyai.com/v2/upload",
-                    headers=headers,
-                    content=audio_file_content
-                )
-                upload_res.raise_for_status()
-                upload_url = upload_res.json()["upload_url"]
+        from app.core.http_client import http_client
+        try:
+            # 1. Upload
+            # AssemblyAI expects raw bytes in body
+            print("Uploading audio to AssemblyAI...")
+            upload_res = await http_client.client.post(
+                "https://api.assemblyai.com/v2/upload",
+                headers=headers,
+                content=audio_file_content
+            )
+            upload_res.raise_for_status()
+            upload_url = upload_res.json()["upload_url"]
 
-                # 2. Start Transcription
-                print(f"Starting transcription for {upload_url}...")
-                transcript_res = await client.post(
-                    "https://api.assemblyai.com/v2/transcript",
-                    json={
-                        "audio_url": upload_url,
-                        "speaker_labels": True, # For diarization
-                        "language_detection": True # Auto-detect language
-                    },
-                    headers=headers
-                )
-                transcript_res.raise_for_status()
-                transcript_id = transcript_res.json()["id"]
+            # 2. Start Transcription
+            print(f"Starting transcription for {upload_url}...")
+            transcript_res = await http_client.client.post(
+                "https://api.assemblyai.com/v2/transcript",
+                json={
+                    "audio_url": upload_url,
+                    "speaker_labels": True, # For diarization
+                    "language_detection": True # Auto-detect language
+                },
+                headers=headers
+            )
+            transcript_res.raise_for_status()
+            transcript_id = transcript_res.json()["id"]
 
                 # 3. Poll for Completion
                 polling_endpoint = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
                 
                 while True:
-                    poll_res = await client.get(polling_endpoint, headers=headers)
+                    poll_res = await http_client.client.get(polling_endpoint, headers=headers)
                     poll_res.raise_for_status()
                     poll_data = poll_res.json()
                     

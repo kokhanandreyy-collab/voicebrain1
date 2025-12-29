@@ -1,10 +1,18 @@
 from .base import BaseIntegration
 from app.models import Integration, Note
 from notion_client import AsyncClient
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from notion_client.errors import APIResponseError
 import logging
 import datetime
 
 class NotionIntegration(BaseIntegration):
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        retry=(retry_if_exception_type((APIResponseError, ConnectionError, TimeoutError))),
+        reraise=True
+    )
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to Notion (Context Aware)")
         

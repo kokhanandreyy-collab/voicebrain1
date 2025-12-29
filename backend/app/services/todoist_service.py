@@ -31,20 +31,20 @@ class TodoistService:
             return [{"id": "mock_inbox", "name": "Inbox"}]
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.api_url}/projects",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=10.0
-                )
-                if response.status_code == 200:
-                    projects = response.json()
-                    # Store only necessary info: ID and Name
-                    project_list = [{"id": p["id"], "name": p["name"]} for p in projects]
-                    
-                    # Cache for 60 minutes (3600s)
-                    await self.redis.setex(cache_key, 3600, json.dumps(project_list))
-                    return project_list
+            from app.core.http_client import http_client
+            response = await http_client.client.get(
+                f"{self.api_url}/projects",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                projects = response.json()
+                # Store only necessary info: ID and Name
+                project_list = [{"id": p["id"], "name": p["name"]} for p in projects]
+                
+                # Cache for 60 minutes (3600s)
+                await self.redis.setex(cache_key, 3600, json.dumps(project_list))
+                return project_list
         except Exception as e:
             logger.error(f"Failed to fetch Todoist projects: {e}")
             
@@ -59,8 +59,8 @@ class TodoistService:
             return len(tasks)
 
         created_count = 0
-        async with httpx.AsyncClient() as client:
-            for task_content in tasks:
+        from app.core.http_client import http_client
+        for task_content in tasks:
                 try:
                     # Truncate title to 250 chars, move rest to description
                     title = task_content
@@ -77,7 +77,7 @@ class TodoistService:
                     if priority:
                         payload["priority"] = priority
 
-                    response = await client.post(
+                    response = await http_client.client.post(
                         f"{self.api_url}/tasks",
                         json=payload,
                         headers={"Authorization": f"Bearer {access_token}"}

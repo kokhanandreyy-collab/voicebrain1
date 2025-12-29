@@ -1,10 +1,16 @@
 from abc import ABC, abstractmethod
 from app.models import Integration, Note
+from app.core.http_client import http_client
 import logging
 
 class BaseIntegration(ABC):
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.http_client = http_client.client
+
+    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Helper to make robust requests."""
+        return await self.http_client.request(method, url, **kwargs)
     
     @abstractmethod
     async def sync(self, integration: Integration, note: Note):

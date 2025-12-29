@@ -38,25 +38,25 @@ class LinearIntegration(BaseIntegration):
         }
         """
 
-        async with httpx.AsyncClient() as client:
-            for item in note.action_items:
-                # Description includes summary + link to VoiceBrain source
-                description = f"{note.summary or 'No summary provided.'}\n\n---\nExtracted from VoiceBrain Note: https://voicebrain.app/notes/{note.id}"
-                
-                variables = {
-                        "input": {
-                        "teamId": team_id,
-                        "title": str(item)[:250],
-                        "description": description
-                    }
+        for item in note.action_items:
+            # Description includes summary + link to VoiceBrain source
+            description = f"{note.summary or 'No summary provided.'}\n\n---\nExtracted from VoiceBrain Note: https://voicebrain.app/notes/{note.id}"
+            
+            variables = {
+                    "input": {
+                    "teamId": team_id,
+                    "title": str(item)[:250],
+                    "description": description
                 }
+            }
 
-                try:
-                    response = await client.post(
-                        url, 
-                        headers=headers, 
-                        json={"query": mutation, "variables": variables}
-                    )
+            try:
+                response = await self.request(
+                    "POST",
+                    url, 
+                    headers=headers, 
+                    json={"query": mutation, "variables": variables}
+                )
                     
                     if response.status_code == 200:
                         data = response.json()

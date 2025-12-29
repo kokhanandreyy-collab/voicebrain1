@@ -84,6 +84,7 @@ class NoteResponse(NoteBase):
     mood: Optional[str] = None
     google_maps_url: Optional[str] = None
     yandex_maps_url: Optional[str] = None
+    email_draft_id: Optional[str] = None
     status: str = "COMPLETED"
     processing_step: Optional[str] = None
     created_at: datetime

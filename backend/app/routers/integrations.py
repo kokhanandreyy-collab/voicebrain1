@@ -459,3 +459,43 @@ async def google_tasks_callback(
     from app.services.integrations.tasks_service import tasks_service
     status = await tasks_service.connect_google_tasks(current_user.id, code)
     return {"status": status}
+
+@router.post("/gmail/connect")
+async def connect_gmail(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Gmail."""
+    from app.services.integrations.email_service import email_service
+    status = await email_service.connect_gmail(current_user.id, code)
+    return {"status": status}
+
+@router.post("/gmail/callback")
+async def gmail_callback(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Gmail."""
+    from app.services.integrations.email_service import email_service
+    await email_service.connect_gmail(current_user.id, code)
+    return {"status": "Connected"}
+
+@router.post("/outlook/connect")
+async def connect_outlook(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Connect Outlook."""
+    from app.services.integrations.email_service import email_service
+    status = await email_service.connect_outlook(current_user.id, code)
+    return {"status": status}
+
+@router.post("/outlook/callback")
+async def outlook_callback(
+    code: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Callback for Outlook."""
+    from app.services.integrations.email_service import email_service
+    await email_service.connect_outlook(current_user.id, code)
+    return {"status": "Connected"}

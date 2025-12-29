@@ -37,6 +37,10 @@ async def step_sync_integrations(note: Note, db) -> None:
         if integration.provider in ["apple_reminders", "google_tasks"]:
             sync_tasks.delay(note.id, integration.provider)
             continue
+
+        if integration.provider in ["gmail", "outlook"]:
+            sync_email.delay(note.id, integration.provider)
+            continue
             
         handler = get_integration_handler(integration.provider)
         if handler:
@@ -139,6 +143,20 @@ async def _sync_tasks_async(note_id: str, provider: str) -> None:
 def sync_tasks(note_id: str, provider: str):
     async_to_sync(_sync_tasks_async)(note_id, provider)
     return {"status": "synced_tasks", "provider": provider, "note_id": note_id}
+
+async def _sync_email_async(note_id: str, provider: str) -> None:
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Note).where(Note.id == note_id))
+        note = result.scalars().first()
+        if not note: return
+        
+        from app.services.integrations.email_service import email_service
+        await email_service.create_or_update_draft(note.user_id, note.id, note.transcription_text, provider=provider)
+
+@celery.task(name="sync.email")
+def sync_email(note_id: str, provider: str):
+    async_to_sync(_sync_email_async)(note_id, provider)
+    return {"status": "synced_email", "provider": provider, "note_id": note_id}
 
 @celery.task(name="sync.process_note")
 def process_sync(note_id: str):

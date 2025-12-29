@@ -12,7 +12,8 @@ celery = Celery(
         "workers.transcribe_tasks",
         "workers.analyze_tasks",
         "workers.sync_tasks",
-        "workers.maintenance_tasks"
+        "workers.maintenance_tasks",
+        "workers.reflection_tasks"
     ]
 )
 
@@ -49,5 +50,9 @@ celery.conf.beat_schedule = {
     "backup-database-daily": {
         "task": "backup_database",
         "schedule": crontab(hour=4, minute=0),
+    },
+    "daily-reflection-trigger": {
+        "task": "reflection.trigger_daily",
+        "schedule": crontab(hour=1, minute=0), # Run at 1:00 AM
     }
 }

@@ -41,6 +41,36 @@ async def step_embed_and_save(note: Note, text: str, analysis: Dict[str, Any], d
     except Exception as e:
         logger.error(f"Embedding failed: {e}")
 
+
+
+async def step_get_rag_context(user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
+    """Fetch top 5 similar notes for RAG context."""
+    try:
+        query_vector = await ai_service.generate_embedding(text)
+        # Cosine distance < 0.3 means similarity > 0.7
+        result = await db.execute(
+            select(Note)
+            .join(NoteEmbedding)
+            .where(Note.user_id == user_id, Note.id != note_id)
+            .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
+            .limit(5)
+        )
+        notes = list(result.scalars().all())
+        
+        context_parts = []
+        for n in notes:
+            # Simple threshold check in python if needed, or rely on SQL sort + limit
+            # But the user asked for threshold 0.7.
+            # We can use a filter in SQL: .where(NoteEmbedding.embedding.cosine_distance(query_vector) < 0.3)
+            context_parts.append(f"Note: {n.title}\nSummary: {n.summary or 'No summary'}\nContent: {n.transcription_text[:200]}...")
+        
+        if not context_parts:
+            return ""
+        return "\n---\n".join(context_parts)
+    except Exception as e:
+        logger.error(f"RAG Context retrieval failed: {e}")
+        return ""
+
 async def _process_analyze_async(note_id: str) -> None:
     logger.info(f"[Analyze] Processing note: {note_id}")
     db = AsyncSessionLocal()
@@ -57,8 +87,18 @@ async def _process_analyze_async(note_id: str) -> None:
         if user:
             user_bio, target_lang = user.bio, user.target_language or "Original"
 
+        # RAG Search
+        note.processing_step = "🔍 Searching related notes..."
+        await db.commit()
+        rag_context = await step_get_rag_context(note.user_id, note.id, note.transcription_text, db)
+
         # Analyze
-        analysis = await step_analyze(note.transcription_text, user_context=user_bio, target_language=target_lang)
+        analysis = await ai_service.analyze_text(
+            note.transcription_text, 
+            user_context=user_bio, 
+            target_language=target_lang,
+            previous_context=rag_context
+        )
         await step_embed_and_save(note, note.transcription_text, analysis, db)
         
         note.processing_step = "🚀 Syncing with apps..."

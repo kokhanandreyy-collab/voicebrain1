@@ -125,13 +125,8 @@ class NoteEmbedding(Base):
     __tablename__ = "note_embeddings"
     
     note_id = Column(String, ForeignKey("notes.id"), primary_key=True)
-    # Using pgvector's VECTOR type if available, else just store as JSON for MVP if pgvector setup is complex
-    # For now, let's assume JSON or attempt pgvector import
-    # from pgvector.sqlalchemy import VECTOR
-    # embedding = Column(VECTOR(1536))
-    
-    # Fallback to JSON for portability if extension missing
-    embedding = Column(JSON) 
+    from pgvector.sqlalchemy import VECTOR
+    embedding = Column(VECTOR(1536)) 
     
     note = relationship("Note", back_populates="embedding_data")
 

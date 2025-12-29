@@ -138,7 +138,7 @@ class AIService:
             
         return default_text
 
-    async def analyze_text(self, text: str, user_context: Optional[str] = None, target_language: str = "Original") -> Dict[str, Any]:
+    async def analyze_text(self, text: str, user_context: Optional[str] = None, target_language: str = "Original", previous_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze text using DeepSeek V3 (via OpenAI-compatible API).
         """
@@ -171,6 +171,9 @@ class AIService:
             # We add specific place in prompt for User Context
             context_instruction: str = f"\nUSER CONTEXT (Bio/Jargon): {user_context}\nUse this context to correctly identify names, projects, and specific jargon." if user_context else ""
             
+            # RAG Context
+            rag_instruction: str = f"\n\nPREVIOUS CONTEXT (Related Notes):\n{previous_context}\nUse this context to maintain continuity, link related ideas, or avoid repeating already addressed tasks." if previous_context else ""
+
             # Language Instruction
             lang_instruction: str = ""
             if target_language and target_language != "Original":
@@ -180,6 +183,7 @@ class AIService:
                 "You are an advanced AI assistant powered by DeepSeek V3. "
                 "Analyze the user's audio transcription. "
                 f"{context_instruction}"
+                f"{rag_instruction}"
                 f"{lang_instruction}"
                 "Return a valid JSON object with the following fields:\n"
                 "1. 'title': A short, catchy, creative title.\n"
@@ -212,6 +216,9 @@ class AIService:
             if user_context and "USER CONTEXT" not in base_system_prompt:
                  base_system_prompt += f"\n\nUSER CONTEXT: {user_context}"
             
+            if previous_context and "PREVIOUS CONTEXT" not in base_system_prompt:
+                 base_system_prompt += f"\n\nPREVIOUS CONTEXT:\n{previous_context}"
+
             # If not present already, append language instruction
             if lang_instruction and "ALWAYS generate the Title" not in base_system_prompt:
                  base_system_prompt += f"\n{lang_instruction}"

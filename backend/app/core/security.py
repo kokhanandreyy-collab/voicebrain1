@@ -1,3 +1,4 @@
+from cryptography.fernet import Fernet
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
@@ -26,3 +27,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def encrypt_token(token: str) -> bytes:
+    if not token:
+        return None
+    f = Fernet(settings.ENCRYPTION_KEY.encode())
+    return f.encrypt(token.encode())
+
+def decrypt_token(encrypted_token: Optional[bytes]) -> Optional[str]:
+    if not encrypted_token:
+        return None
+    f = Fernet(settings.ENCRYPTION_KEY.encode())
+    return f.decrypt(encrypted_token).decode()

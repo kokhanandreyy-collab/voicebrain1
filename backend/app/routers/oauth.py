@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
+from app.core.limiter import limiter
 from fastapi.responses import RedirectResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +82,8 @@ async def login_via_provider(provider: str):
     return RedirectResponse(url)
 
 @router.get("/{provider}/callback")
-async def auth_callback(provider: str, code: str, db: AsyncSession = Depends(get_db)):
+@limiter.limit("50/minute")
+async def auth_callback(request: Request, provider: str, code: str, db: AsyncSession = Depends(get_db)):
     if provider not in PROVIDERS:
         raise HTTPException(status_code=404, detail="Provider not found")
         

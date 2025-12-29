@@ -14,7 +14,7 @@ class TickTickIntegration(BaseIntegration):
             return
 
         # 1. Authenticate
-        access_token = integration.access_token
+        access_token = integration.auth_token
         if isinstance(access_token, dict):
             access_token = access_token.get("access_token")
             

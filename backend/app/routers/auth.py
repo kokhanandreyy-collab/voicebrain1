@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi_limiter.depends import RateLimiter
+from app.core.limiter import limiter
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -20,8 +20,9 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
-@router.post("/signup", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
-async def signup(user: UserCreate, db: AsyncSession = Depends(get_db)):
+@router.post("/signup")
+@limiter.limit("5/5 minute")
+async def signup(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == user.email))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -113,8 +114,9 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
     
     return {"message": "Password reset successfully"}
 
-@router.post("/login", response_model=Token, dependencies=[Depends(RateLimiter(times=5, seconds=60))])
-async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
+@router.post("/login", response_model=Token)
+@limiter.limit("5/5 minute")
+async def login(request: Request, user: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == user.email))
     db_user = result.scalars().first()
     

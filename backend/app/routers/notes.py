@@ -7,6 +7,7 @@ from typing import List
 from app.core.database import get_db
 from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
 from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote
+from pydantic import BaseModel
 from app.services.ai_service import ai_service
 from app.dependencies import get_current_user
 from typing import Optional

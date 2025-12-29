@@ -7,7 +7,7 @@ class LinearIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to Linear")
         
-        token = integration.access_token
+        token = integration.auth_token
         team_id = (integration.settings or {}).get("team_id")
         
         if not team_id:

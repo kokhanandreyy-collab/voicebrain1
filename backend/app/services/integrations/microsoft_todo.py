@@ -13,9 +13,9 @@ class MicrosoftTodoIntegration(BaseIntegration):
             return
 
         # 1. Authenticate
-        # Assuming integration.access_token is the Bearer token string or a dict containing it.
+        # Assuming integration.auth_token is the Bearer token string or a dict containing it.
         # We usually store the full token response.
-        access_token = integration.access_token
+        access_token = integration.auth_token
         if isinstance(access_token, dict):
             access_token = access_token.get("access_token")
             

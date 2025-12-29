@@ -10,10 +10,10 @@ class ReflectIntegration(BaseIntegration):
         
         # 1. Authenticate
         # Reflect usually requires an Access Token and a Graph ID.
-        # We assume integration.access_token stores the API Key.
+        # We assume integration.auth_token stores the API Key.
         # We assume integration.settings['graph_id'] stores the Graph ID.
         
-        access_token = integration.access_token
+        access_token = integration.auth_token
         if isinstance(access_token, dict):
             access_token = access_token.get("access_token") 
         

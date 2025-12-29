@@ -15,21 +15,21 @@ class GoogleFitIntegration(BaseIntegration):
         if not integration.expires_at: return
         now = datetime.datetime.now(datetime.timezone.utc)
         if integration.expires_at > now + datetime.timedelta(minutes=5): return
-        if not integration.refresh_token: return
+        if not integration.auth_refresh_token: return
 
         self.logger.info("Refreshing Google Fit Token...")
         client = http_client.client
         payload = {
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": integration.refresh_token,
+            "refresh_token": integration.auth_refresh_token,
             "grant_type": "refresh_token"
         }
         try:
             resp = await client.post("https://oauth2.googleapis.com/token", data=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                integration.access_token = data["access_token"]
+                integration.auth_token = data["access_token"]
                 expires_in = data.get("expires_in", 3600)
                 integration.expires_at = now + datetime.timedelta(seconds=expires_in)
                 self.logger.info("Token refreshed successfully.")
@@ -60,8 +60,8 @@ class GoogleFitIntegration(BaseIntegration):
         
         creds = None
         try:
-            token_val = integration.access_token
-            refresh_token_val = integration.refresh_token
+            token_val = integration.auth_token
+            refresh_token_val = integration.auth_refresh_token
             
             # Robust Parsing for Legacy JSON tokens
             if isinstance(token_val, str) and (token_val.startswith("{") or "access_token" in token_val):
@@ -70,7 +70,7 @@ class GoogleFitIntegration(BaseIntegration):
                      token_val = token_data.get("access_token", token_val)
                      
                      # Normalize: Update DB to simple string if we successfully extracted
-                     integration.access_token = token_val
+                     integration.auth_token = token_val
                      # Assuming 'db' is available in context? 
                      # The sync() signature is sync(self, integration, note) - wait, where is db?
                      # Looking at base.py or earlier calls, sync usually receives DB session or we perform sessionless/implicit updates?

@@ -33,7 +33,7 @@ class TodoistIntegration(BaseIntegration):
         project_name_to_match = explicit_folder or suggested_project_name
         
         if project_name_to_match:
-            projects = await todoist_service.get_projects(integration.access_token, note.user_id)
+            projects = await todoist_service.get_projects(integration.auth_token, note.user_id)
             if projects:
                 # Fuzzy Matching
                 project_names = [p["name"] for p in projects]
@@ -49,7 +49,7 @@ class TodoistIntegration(BaseIntegration):
         # 4. Sync
         self.logger.info(f"Syncing {len(note.action_items)} items to Todoist for user {note.user_id} (Project: {project_id}, Priority: {todoist_priority})")
         await todoist_service.sync_tasks_to_todoist(
-            integration.access_token, 
+            integration.auth_token, 
             note.action_items, 
             project_id=project_id, 
             priority=todoist_priority

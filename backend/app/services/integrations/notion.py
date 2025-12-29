@@ -8,7 +8,7 @@ class NotionIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to Notion (Context Aware)")
         
-        notion = AsyncClient(auth=integration.access_token)
+        notion = AsyncClient(auth=integration.auth_token)
         database_id = (integration.settings or {}).get("database_id")
         
         if not database_id:

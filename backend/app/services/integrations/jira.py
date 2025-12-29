@@ -8,7 +8,7 @@ class JiraIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to Jira")
         
-        token = integration.access_token
+        token = integration.auth_token
         # Jira projects are identified by key (e.g. PROJ)
         project_key = (integration.settings or {}).get("project_key")
         

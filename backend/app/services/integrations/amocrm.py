@@ -23,7 +23,7 @@ class AmoCRMIntegration(BaseIntegration):
         payload = {
             "client_id": settings.AMOCRM_CLIENT_ID,
             "client_secret": settings.AMOCRM_CLIENT_SECRET,
-            "refresh_token": integration.refresh_token,
+            "refresh_token": integration.auth_refresh_token,
             "grant_type": "refresh_token",
             "redirect_uri": f"{settings.API_BASE_URL}/settings/callback/amocrm" # sometimes required
         }
@@ -35,9 +35,9 @@ class AmoCRMIntegration(BaseIntegration):
             resp = await client.post(f"{base_url}/oauth2/access_token", json=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                integration.access_token = data["access_token"]
+                integration.auth_token = data["access_token"]
                 if data.get("refresh_token"):
-                    integration.refresh_token = data["refresh_token"] # Rotate refresh token if provided
+                    integration.auth_refresh_token = data["refresh_token"] # Rotate refresh token if provided
                 
                 expires_in = data.get("expires_in", 86400)
                 integration.expires_at = now + datetime.timedelta(seconds=expires_in)
@@ -70,7 +70,7 @@ class AmoCRMIntegration(BaseIntegration):
             self.logger.info("Skipping AmoCRM sync: Intent is not 'crm'")
             return
 
-        token = integration.access_token
+        token = integration.auth_token
         # Base URL should have been saved during OAuth callback (e.g., https://subdomain.amocrm.ru)
         base_url = integration.settings.get('base_url')
         

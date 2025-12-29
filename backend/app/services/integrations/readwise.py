@@ -21,7 +21,7 @@ class ReadwiseIntegration(BaseIntegration):
         html_content += f"<h2>Summary</h2><p>{summary}</p>" 
         html_content += f"<h2>Transcript</h2><p>{transcript}</p>"
         
-        await readwise_service.save_to_reader(integration.access_token, {
+        await readwise_service.save_to_reader(integration.auth_token, {
             "title": title,
             "url": f"https://voicebrain.app/notes/{note.id}",
             "html": html_content,

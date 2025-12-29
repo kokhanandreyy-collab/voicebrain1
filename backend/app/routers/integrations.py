@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models import User, Integration
@@ -36,6 +37,7 @@ async def get_integrations(
     
     # Map to schema manually or use Pydantic with property
     response = []
+    for i in integrations:
         settings = i.settings or {}
         response.append({
             "id": i.id,
@@ -301,6 +303,7 @@ async def integration_callback(
     Exchange code for token and save integration.
     """
     settings_data = {}
+    from app.core.security import encrypt_token
     
     # 1. Exchange Code
     if data.code.startswith("mock_"):
@@ -341,6 +344,12 @@ async def integration_callback(
         existing.access_token = token_data.get("access_token")
         if token_data.get("refresh_token"):
             existing.refresh_token = token_data.get("refresh_token")
+        
+        # Add Encrypted Tokens
+        existing.encrypted_access_token = encrypt_token(token_data.get("access_token"))
+        if token_data.get("refresh_token"):
+            existing.encrypted_refresh_token = encrypt_token(token_data.get("refresh_token"))
+
         existing.expires_at = expires_at
         existing.settings = settings_data
     else:
@@ -349,6 +358,8 @@ async def integration_callback(
             provider=data.provider,
             access_token=token_data.get("access_token"),
             refresh_token=token_data.get("refresh_token"),
+            encrypted_access_token=encrypt_token(token_data.get("access_token")),
+            encrypted_refresh_token=encrypt_token(token_data.get("refresh_token")),
             expires_at=expires_at,
             settings=settings_data
         )

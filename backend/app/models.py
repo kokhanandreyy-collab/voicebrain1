@@ -1,4 +1,4 @@
-
+from typing import Optional
 from sqlalchemy import Column, String, Boolean, Integer, JSON, LargeBinary, DateTime, ForeignKey, Table, Text, Float
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
@@ -18,6 +18,24 @@ class UserTier:
     FREE = "free"
     PRO = "pro"
     PREMIUM = "premium"
+
+TIER_LIMITS = {
+    "free": {
+        "monthly_transcription_seconds": 1800, # 30 mins
+        "integrations": 1,
+        "max_duration_seconds": 300, # 5 mins per upload
+    },
+    "pro": {
+        "monthly_transcription_seconds": 3600 * 3, # 3 hours
+        "integrations": 50,
+        "max_duration_seconds": 3600, # 1 hour per upload
+    },
+    "premium": {
+        "monthly_transcription_seconds": float('inf'),
+        "integrations": 50,
+        "max_duration_seconds": 3600 * 2, # 2 hours per upload
+    }
+}
 
 class User(Base):
     __tablename__ = "users"
@@ -125,11 +143,29 @@ class Integration(Base):
     provider = Column(String, nullable=False) # notion, todoist, google_calendar
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=True)
+    encrypted_access_token = Column(LargeBinary, nullable=True)
+    encrypted_refresh_token = Column(LargeBinary, nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     config = Column(JSON, default={}) # e.g. default_database_id
     is_active = Column(Boolean, default=True)
     
     user = relationship("User", back_populates="integrations")
+
+    @property
+    def auth_token(self) -> str:
+        """Returns decrypted access token. Fallback to plaintext for migration."""
+        from app.core.security import decrypt_token
+        if self.encrypted_access_token:
+            return decrypt_token(self.encrypted_access_token)
+        return self.access_token
+
+    @property
+    def auth_refresh_token(self) -> Optional[str]:
+        """Returns decrypted refresh token. Fallback to plaintext for migration."""
+        from app.core.security import decrypt_token
+        if self.encrypted_refresh_token:
+            return decrypt_token(self.encrypted_refresh_token)
+        return self.refresh_token
 
 class IntegrationLog(Base):
     __tablename__ = "integration_logs"

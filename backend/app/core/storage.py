@@ -1,8 +1,9 @@
-
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 import os
 import logging
+import shutil
+from typing import Union, BinaryIO
 
 # Configuration (In a real app, use settings.py/pydantic)
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "voicebrain-audio-dev")
@@ -30,11 +31,6 @@ class StorageClient:
             logger.warning("AWS Credentials not found. Using MockStorage.")
             # Ensure local temp dir
             os.makedirs("temp_storage", exist_ok=True)
-
-import shutil
-from typing import Union, BinaryIO
-
-# ... imports ...
 
     async def upload_file(self, file_content: Union[bytes, BinaryIO], file_name: str, content_type: str = "audio/mpeg") -> str:
         """

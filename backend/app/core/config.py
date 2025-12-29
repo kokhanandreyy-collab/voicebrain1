@@ -7,8 +7,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "VoiceBrain"
     # Env
-    ENVIRONMENT: str = "production"
-    SECRET_KEY: str
+    ENVIRONMENT: str = "development"
+    SECRET_KEY: Optional[str] = None
+    ENCRYPTION_KEY: Optional[str] = None
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod
@@ -16,14 +17,28 @@ class Settings(BaseSettings):
         if v:
             return v
             
-        # Check environment
-        env = os.getenv("ENVIRONMENT", "production")
+        # Check environment from data or os
+        env = info.data.get("ENVIRONMENT") or os.getenv("ENVIRONMENT", "development")
         
         if env == "development":
              print("\033[93mWARNING: SECRET_KEY not found. Using dev key.\033[0m")
              return "dev_secret_key_insecure"
             
         raise ValueError("SECRET_KEY must be set in production environment!")
+
+    @field_validator("ENCRYPTION_KEY", mode="before")
+    @classmethod
+    def validate_encryption_key(cls, v: Optional[str], info: ValidationInfo) -> str:
+        if v:
+            return v
+        
+        env = info.data.get("ENVIRONMENT") or os.getenv("ENVIRONMENT", "development")
+        if env == "development":
+            # For development, we return a valid but insecure key if not provided
+            # generated via Fernet.generate_key()
+            return "GiqaWijI1m94xqMrFtlzpMr2qOzYKyqHWjkowdri1-0="
+            
+        raise ValueError("ENCRYPTION_KEY must be set in production environment!")
 
     API_V1_STR: str = "/api"
     API_BASE_URL: str = "http://localhost:8000"

@@ -9,7 +9,7 @@ class SlackIntegration(BaseIntegration):
         
         # Initialize Client
         # Assumes access_token is a Bot User OAuth Token (xoxb-...)
-        client = AsyncWebClient(token=integration.access_token)
+        client = AsyncWebClient(token=integration.auth_token)
         
         # Determine Channel
         explicit_folder = (note.ai_analysis or {}).get("explicit_folder")
@@ -94,7 +94,7 @@ class SlackIntegration(BaseIntegration):
                         # For now, let's assume ensure_token_valid is a placeholder
                         # or implemented if needed.
                         await self.ensure_token_valid(integration)
-                        client = AsyncWebClient(token=integration.access_token)
+                        client = AsyncWebClient(token=integration.auth_token)
                         continue
                 
                 self.logger.error(f"Slack API error (Attempt {attempt+1}): {e}")

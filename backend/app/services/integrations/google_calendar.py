@@ -17,7 +17,7 @@ class GoogleCalendarIntegration(BaseIntegration):
         if integration.expires_at > now + datetime.timedelta(minutes=5):
             return
 
-        if not integration.refresh_token:
+        if not integration.auth_refresh_token:
             self.logger.warning("Token expired but no refresh token.")
             return
 
@@ -26,7 +26,7 @@ class GoogleCalendarIntegration(BaseIntegration):
         payload = {
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": integration.refresh_token,
+            "refresh_token": integration.auth_refresh_token,
             "grant_type": "refresh_token"
         }
         
@@ -34,7 +34,7 @@ class GoogleCalendarIntegration(BaseIntegration):
             resp = await client.post("https://oauth2.googleapis.com/token", data=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                integration.access_token = data["access_token"]
+                integration.auth_token = data["access_token"]
                 # Update expiry
                 expires_in = data.get("expires_in", 3600)
                 integration.expires_at = now + datetime.timedelta(seconds=expires_in)
@@ -62,7 +62,7 @@ class GoogleCalendarIntegration(BaseIntegration):
         self.logger.info(f"Syncing {len(note.calendar_events)} events to Google Calendar with conflict checks")
         
         user_creds = {
-            "access_token": integration.access_token,
+            "access_token": integration.auth_token,
             "token_type": "Bearer", 
             "expires_in": 3600, 
         }

@@ -10,7 +10,7 @@ class DropboxIntegration(BaseIntegration):
         self.logger.info(f"Syncing note {note.id} to Dropbox")
         
         # Dropbox API requires the token
-        token = integration.access_token
+        token = integration.auth_token
         
         # Prepare Markdown Content
         title = note.title or "Untitled Note"

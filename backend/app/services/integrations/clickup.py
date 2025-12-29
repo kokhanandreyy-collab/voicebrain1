@@ -8,7 +8,7 @@ class ClickUpIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to ClickUp")
         
-        token = integration.access_token
+        token = integration.auth_token
         list_id = (integration.settings or {}).get("list_id")
         
         if not list_id:

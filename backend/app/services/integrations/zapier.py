@@ -19,7 +19,7 @@ class ZapierIntegration(BaseIntegration):
             routes.get(intent) or 
             routes.get("default") or 
             settings.get("webhook_url") or 
-            integration.access_token # Fallback to access_token for backward compatibility
+            integration.auth_token # Fallback to access_token for backward compatibility
         )
 
         auto_trigger = settings.get("auto_trigger_new_note", True)

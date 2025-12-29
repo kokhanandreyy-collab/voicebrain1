@@ -18,7 +18,7 @@ class GoogleDriveIntegration(BaseIntegration):
         if integration.expires_at > now + datetime.timedelta(minutes=5):
             return
 
-        if not integration.refresh_token:
+        if not integration.auth_refresh_token:
             self.logger.warning("Token expired but no refresh token.")
             return
 
@@ -27,7 +27,7 @@ class GoogleDriveIntegration(BaseIntegration):
         payload = {
             "client_id": settings.GOOGLE_DRIVE_CLIENT_ID or settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_DRIVE_CLIENT_SECRET or settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": integration.refresh_token,
+            "refresh_token": integration.auth_refresh_token,
             "grant_type": "refresh_token"
         }
         
@@ -35,7 +35,7 @@ class GoogleDriveIntegration(BaseIntegration):
             resp = await client.post("https://oauth2.googleapis.com/token", data=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                integration.access_token = data["access_token"]
+                integration.auth_token = data["access_token"]
                 # Update expiry
                 expires_in = data.get("expires_in", 3600)
                 integration.expires_at = now + datetime.timedelta(seconds=expires_in)
@@ -57,7 +57,7 @@ class GoogleDriveIntegration(BaseIntegration):
         for attempt in range(2):
             try:
                 user_creds = {
-                    "access_token": integration.access_token,
+                    "access_token": integration.auth_token,
                     "token_type": "Bearer",
                     "expires_in": 3600, 
                 }

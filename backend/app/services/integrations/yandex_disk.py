@@ -9,7 +9,7 @@ class YandexDiskIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to Yandex Disk")
         
-        token = integration.access_token
+        token = integration.auth_token
         if not token:
              self.logger.warning("No access token for Yandex Disk")
              return

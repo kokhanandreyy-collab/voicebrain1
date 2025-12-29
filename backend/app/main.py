@@ -1,6 +1,10 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.http_client import http_client
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from app.core.limiter import limiter
 import os
 
 app = FastAPI(title="VoiceBrain API")
@@ -8,7 +12,6 @@ app = FastAPI(title="VoiceBrain API")
 import os
 # Secure CORS
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -16,6 +19,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # ...
 
@@ -27,18 +34,8 @@ async def startup():
     # Initialize Global HTTP Client
     http_client.start()
 
-    # Rate Limiter Init
-    from fastapi_limiter import FastAPILimiter
-    import redis.asyncio as redis
-    
-    redis_url = "redis://redis:6379" # Docker DNS
-    try:
-        r = redis.from_url(redis_url, encoding="utf-8", decode_responses=True)
-        # Check connection (optional) or just init
-        await FastAPILimiter.init(r)
-        print("Rate Limiter initialized")
-    except Exception as e:
-         print(f"Rate Limiter Init Failed: {e}. Falling back to no limits.")
+    # Rate Limiter is now handled by slowapi via middleware/limiter.py
+    print("Rate Limiter (slowapi) active")
          
     # Telegram Bot is now run separately via run_bot.py
 
@@ -49,10 +46,9 @@ async def shutdown():
 # --- Router Configuration ---
 # --- Router Configuration ---
 from fastapi import Depends
-from fastapi_limiter.depends import RateLimiter
 from app.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users
 
-api_router = APIRouter(dependencies=[Depends(RateLimiter(times=100, seconds=60))])
+api_router = APIRouter()
 
 # Group all routers under the API router
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -71,7 +67,13 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
+@limiter.exempt
 async def root():
     return {"message": "VoiceBrain API v1"}
+
+@app.get("/health")
+@limiter.exempt
+async def health():
+    return {"status": "ok"}
 
 

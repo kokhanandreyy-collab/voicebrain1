@@ -9,7 +9,7 @@ class VKIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):
         self.logger.info(f"Syncing note {note.id} to VK")
         
-        token = integration.access_token
+        token = integration.auth_token
         if not token:
              self.logger.warning("Missing Access Token for VK")
              return

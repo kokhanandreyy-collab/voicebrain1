@@ -86,7 +86,7 @@ async def _process_sync_async(note_id: str) -> None:
     finally:
         await db.close()
 
-@celery.task(name="process_sync", queue="sync_queue")
+@celery.task(name="sync.process_note")
 def process_sync(note_id: str):
     async_to_sync(_process_sync_async)(note_id)
     return {"status": "synced", "note_id": note_id}

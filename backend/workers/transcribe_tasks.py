@@ -156,7 +156,7 @@ async def _process_transcribe_async(note_id: str) -> None:
     finally:
         await db.close()
 
-@celery.task(name="process_transcribe", queue="transcribe_queue")
+@celery.task(name="transcribe.process_note")
 def process_transcribe(note_id: str):
     async_to_sync(_process_transcribe_async)(note_id)
     return {"status": "transcribed", "note_id": note_id}

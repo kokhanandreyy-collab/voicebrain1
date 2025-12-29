@@ -22,6 +22,12 @@ celery.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_default_queue="celery",
+    task_routes={
+        "transcribe.*": {"queue": "transcribe_queue"},
+        "analyze.*": {"queue": "analyze_queue"},
+        "sync.*": {"queue": "sync_queue"},
+    }
 )
 
 from celery.schedules import crontab

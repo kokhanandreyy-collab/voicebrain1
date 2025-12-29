@@ -8,7 +8,12 @@ celery = Celery(
     "voicebrain_worker",
     broker=broker_url,
     backend=result_backend,
-    include=["app.worker"] # Tasks module
+    include=[
+        "workers.transcribe_tasks",
+        "workers.analyze_tasks",
+        "workers.sync_tasks",
+        "workers.maintenance_tasks"
+    ]
 )
 
 celery.conf.update(
@@ -29,11 +34,11 @@ celery.conf.beat_schedule = {
     },
     "generate-weekly-review": {
         "task": "generate_weekly_review",
-        "schedule": crontab(hour=18, minute=0, day_of_week=0), # Sunday 18:00 UTC
+        "schedule": crontab(hour=18, minute=0, day_of_week=0),
     },
     "check-subscriptions-daily": {
         "task": "check_subscription_expiry",
-        "schedule": crontab(hour=9, minute=0), # Daily 9 AM UTC
+        "schedule": crontab(hour=9, minute=0),
     },
     "backup-database-daily": {
         "task": "backup_database",

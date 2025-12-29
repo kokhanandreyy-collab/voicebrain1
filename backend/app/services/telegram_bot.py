@@ -11,7 +11,7 @@ from app.core.bot import bot
 from app.core.database import AsyncSessionLocal
 from app.models import User, Note
 from app.core.storage import storage_client
-from app.worker import process_note_task
+from workers.transcribe_tasks import process_transcribe
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ async def handle_voice(message: Message):
         await db.refresh(new_note)
 
         # 4. Trigger Worker
-        process_note_task.delay(new_note.id)
+        process_transcribe.delay(new_note.id)
         
         # We don't reply more here, the worker will send a follow-up if telegram_chat_id is set.
 

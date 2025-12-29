@@ -171,15 +171,15 @@ async def upload_note(
     await db.refresh(new_note)
 
     # 4. Trigger Background Worker
-    from app.worker import process_note_task
+    from workers.transcribe_tasks import process_transcribe
     try:
-        # Check if Redis is available, otherwise run inline (fallback for dev with no redis)
+        # Check if Redis is available, otherwise run inline
         import os
         if os.getenv("CELERY_BROKER_URL"):
-             process_note_task.delay(new_note.id)
+             process_transcribe.delay(new_note.id)
         else:
-             print("[Warning] No Celery Broker. Running task synchronously (Blocking).")
-             process_note_task(new_note.id) # Direct call (blocking)
+             print("[Warning] No Celery Broker. Running task synchronously.")
+             process_transcribe(new_note.id) 
     except Exception as e:
         print(f"[Upload Error] Failed to queue task: {e}")
 

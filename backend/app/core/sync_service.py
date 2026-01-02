@@ -41,6 +41,19 @@ class SyncService:
         )
 
         for integration in user_integrations:
+            # Feature Flags Check
+            user = integration.user
+            flags = user.feature_flags or {}
+            
+            # 1. Global Switch
+            if not flags.get("all_integrations", True):
+                continue
+                
+            # 2. Specific Provider Switch
+            flag_key = f"{integration.provider}_enabled"
+            if not flags.get(flag_key, True):
+                continue
+
             if integration.provider == "google_maps":
                 sync_google_maps.delay(note.id)
             elif integration.provider == "yandex_maps":

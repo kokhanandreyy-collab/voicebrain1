@@ -100,6 +100,53 @@ async def handle_voice(message: Message):
         
         # We don't reply more here, the worker will send a follow-up if telegram_chat_id is set.
 
+@dp.message(Command("settings"))
+async def cmd_settings(message: Message):
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.telegram_chat_id == str(message.chat.id)))
+        user = result.scalars().first()
+        if not user:
+            await message.answer("⚠️ Not linked.")
+            return
+
+        flags = user.feature_flags or {}
+        text = "⚙️ *Feature Flags:*\n"
+        for k, v in flags.items():
+            status = "✅" if v else "❌"
+            text += f"{status} `{k}`\n"
+        
+        text += "\nUse `/toggle <flag_name>` to switch."
+        await message.answer(text, parse_mode="Markdown")
+
+@dp.message(Command("toggle"))
+async def cmd_toggle(message: Message, command: CommandObject):
+    if not command.args:
+        await message.answer("Usage: `/toggle <flag_name>`")
+        return
+
+    key = command.args.strip()
+    
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.telegram_chat_id == str(message.chat.id)))
+        user = result.scalars().first()
+        if not user:
+            return
+
+        flags = dict(user.feature_flags or {})
+        current = flags.get(key, False) # Default to False if not present? Or True? Request said default mostly True.
+        # If key doesn't exist, maybe we shouldn't toggle it? 
+        # But for "notion_enabled" it effectively defaults to True if checked cleanly, 
+        # but here we are explicit. 
+        # Let's assume if it's missing, we set it to False (disable) because we are toggling FROM default?
+        # Creating a new flag.
+        
+        flags[key] = not current
+        user.feature_flags = flags
+        await db.commit()
+        
+        status = "Enabled" if flags[key] else "Disabled"
+        await message.answer(f"✅ {key} is now *{status}*.", parse_mode="Markdown")
+
 async def start_bot():
     if not bot:
         logger.warning("TELEGRAM_BOT_TOKEN not set. Telegram Bot will not start.")

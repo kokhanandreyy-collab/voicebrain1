@@ -74,7 +74,7 @@ class User(Base):
     push_subscriptions = Column(JSON, default=[]) # List of subscriptions
 
     # Feature Flags
-    feature_flags = Column(JSON, default={"all": True})
+    feature_flags = Column(JSON, default={"all_integrations": True})
 
     # Admin Role
     role = Column(String, default='user') # 'user' or 'admin' 

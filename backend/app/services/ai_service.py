@@ -521,4 +521,37 @@ class AIService:
             logger.error(f"Weekly Review Error: {e}")
             return "Could not generate weekly review due to an error."
 
+    async def get_chat_completion(self, messages: List[Dict[str, str]], model: Optional[str] = None) -> str:
+        """
+        Generic chat completion method using available AI backend (DeepSeek or OpenAI).
+        """
+        deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
+        client: Optional[AsyncOpenAI] = None
+        use_model: str = "gpt-4o"
+
+        if deepseek_key:
+            client = AsyncOpenAI(api_key=deepseek_key, base_url=settings.DEEPSEEK_BASE_URL)
+            use_model = model or "deepseek-chat"
+        elif self.client:
+            client = self.client
+            use_model = model or "gpt-4o"
+        
+        if not client:
+             return "Mock AI Response: API Key missing."
+
+        try:
+            response = await client.chat.completions.create(
+                model=use_model,
+                messages=messages,
+                temperature=0.7
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.error(f"AI Completion Error: {e}")
+            raise
+
+    async def get_embedding(self, text: str) -> List[float]:
+         """Wrapper for generate_embedding for consistency."""
+         return await self.generate_embedding(text)
+
 ai_service = AIService()

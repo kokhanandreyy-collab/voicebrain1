@@ -1,3 +1,4 @@
+from celery import Celery
 from infrastructure.config import settings
 
 broker_url = settings.CELERY_BROKER_URL

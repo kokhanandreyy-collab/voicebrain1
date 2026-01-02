@@ -265,14 +265,14 @@ class SystemPrompt(Base):
     text = Column(Text, nullable=False)
     version = Column(Integer, default=1)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-class LongTermSummary(Base):
-    __tablename__ = "long_term_summaries"
+class LongTermMemory(Base):
+    __tablename__ = "long_term_memories"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"))
     
     summary_text = Column(Text, nullable=False)
-    importance_score = Column(Float, default=0.0)
+    importance_score = Column(Float, default=8.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     from pgvector.sqlalchemy import VECTOR

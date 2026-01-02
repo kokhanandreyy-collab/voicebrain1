@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from asgiref.sync import async_to_sync
 
-from app.models import Note, User, Integration
+from app.models import Note, User, Integration, NoteStatus
 from app.core.database import AsyncSessionLocal
 from app.services.ai_service import ai_service
 from app.infrastructure.config import settings
@@ -47,15 +47,15 @@ class NotePipeline:
                     return
 
                 # --- STAGE 1: TRANSCRIBE ---
-                if not note.transcription_text:
+                if note.status == NoteStatus.PENDING or not note.transcription_text:
                     await self._run_transcribe_stage(note, db)
                 
                 # --- STAGE 2: ANALYZE ---
-                if not note.ai_analysis: 
+                if note.status == NoteStatus.PROCESSING or (note.transcription_text and not note.ai_analysis):
                     await self._run_analyze_stage(note, db)
 
                 # --- STAGE 3: SYNC ---
-                if note.status != "COMPLETED":
+                if note.status == NoteStatus.ANALYZED or (note.ai_analysis and note.status != NoteStatus.COMPLETED):
                     await self._run_sync_stage(note, db)
 
                 logger.info(f"[Pipeline] Completed processing for note: {note_id}")
@@ -65,13 +65,13 @@ class NotePipeline:
                 import traceback
                 traceback.print_exc()
                 # Update status to ERROR
-                note.status = "ERROR"
+                note.status = NoteStatus.FAILED
                 note.processing_step = f"Error: {str(e)[:50]}"
                 await db.commit()
 
     async def _run_transcribe_stage(self, note: Note, db: AsyncSession):
         logger.info(f"--- Stage 1: Transcribe ({note.id}) ---")
-        note.status = "PROCESSING"
+        note.status = NoteStatus.PROCESSING
         
         # 1. Download
         note.processing_step = "☁️ Uploading..."
@@ -138,6 +138,7 @@ class NotePipeline:
             "text": f"Analyzed note: {analysis.get('title')}. Summary: {analysis.get('summary')[:100]}..."
         })
         
+        note.status = NoteStatus.ANALYZED
         await db.commit()
 
     async def _run_sync_stage(self, note: Note, db: AsyncSession):
@@ -149,7 +150,7 @@ class NotePipeline:
         await step_sync_integrations(note, db)
         
         # 2. Finalize
-        note.status = "COMPLETED"
+        note.status = NoteStatus.COMPLETED
         note.processing_step = "Completed"
         await db.commit()
         

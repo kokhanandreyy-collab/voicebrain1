@@ -79,6 +79,14 @@ class User(Base):
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user")
 
+class NoteStatus:
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    ANALYZED = "ANALYZED"
+    SYNCED = "SYNCED" # Intermediate state if needed, or COMPLETED
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
 class Note(Base):
     __tablename__ = "notes"
 
@@ -106,7 +114,8 @@ class Note(Base):
     health_data = Column(JSON, nullable=True) # {steps: 1000, calories: 500}
     
     # Status
-    status = Column(String, default="PENDING") # PENDING, PROCESSING, COMPLETED, FAILED
+    # Status
+    status = Column(String, default=NoteStatus.PENDING) # PENDING, PROCESSING, ANALYZED, COMPLETED, FAILED
     processing_step = Column(String, nullable=True) # For UI progress (e.g. "Transcribing...")
     processing_error = Column(Text, nullable=True)
     

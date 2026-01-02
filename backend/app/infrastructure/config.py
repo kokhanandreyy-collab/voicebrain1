@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db"
+    POSTGRES_USER: str = "voicebrain"
+    POSTGRES_PASSWORD: str = "voicebrain_secret"
+    POSTGRES_HOST: str = "db"
+    POSTGRES_PORT: str = "5432"
+    POSTGRES_DB: str = "voicebrain_db"
     REDIS_URL: str = "redis://redis:6379"
 
     # Celery

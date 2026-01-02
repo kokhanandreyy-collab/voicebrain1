@@ -10,7 +10,7 @@ from app.infrastructure.config import settings
 from app.core.bot import bot
 from app.infrastructure.database import AsyncSessionLocal
 from app.models import User, Note
-from app.core.storage import storage_client
+from app.infrastructure.storage import storage_client
 from workers.transcribe_tasks import process_transcribe
 
 logger = logging.getLogger(__name__)

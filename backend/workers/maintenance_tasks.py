@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery
 from app.models import Note, User, NoteEmbedding, UserTier
-from app.core.database import AsyncSessionLocal
-from app.core.storage import storage_client
+from app.infrastructure.database import AsyncSessionLocal
+from app.infrastructure.storage import storage_client
 from app.services.ai_service import ai_service
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
+from app.infrastructure.config import settings
 
 @celery.task(name="cluster_notes")
 def cluster_notes_task(user_id: str):
@@ -114,8 +115,8 @@ def backup_database_task():
 async def _backup_database_async() -> None:
     import subprocess, gzip
     logger.info("Starting database backup...")
-    pg_user, pg_password, pg_host = os.getenv("POSTGRES_USER", "postgres"), os.getenv("POSTGRES_PASSWORD", "postgres"), os.getenv("POSTGRES_HOST", "db")
-    pg_port, pg_db = os.getenv("POSTGRES_PORT", "5432"), os.getenv("POSTGRES_DB", "voicebrain")
+    pg_user, pg_password, pg_host = settings.POSTGRES_USER, settings.POSTGRES_PASSWORD, settings.POSTGRES_HOST
+    pg_port, pg_db = settings.POSTGRES_PORT, settings.POSTGRES_DB
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     backup_path = f"/tmp/voicebrain_db_{timestamp}.sql.gz"
     env = os.environ.copy()

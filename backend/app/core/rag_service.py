@@ -106,9 +106,23 @@ class RagService:
 
     async def build_hierarchical_context(self, note: Note, db: AsyncSession) -> str:
         """Aggregates Short, Medium, and Long term memory contexts."""
-        # Short-Term
-        st_history = await short_term_memory.get_history(note.user_id)
-        short_term_str = "\n".join([f"- {item.get('text', str(item))}" for item in st_history]) if st_history else "No recent history."
+    async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any) -> str:
+        """Aggregates Short, Medium, and Long term memory contexts."""
+        # Short-Term: Last 5 notes from DB
+        try:
+             result = await db.execute(
+                 select(Note)
+                 .where(Note.user_id == note.user_id, Note.id != note.id)
+                 .order_by(desc(Note.created_at))
+                 .limit(5)
+             )
+             recent_notes = result.scalars().all()
+             short_term_str = "\n".join([f"- {n.title}: {n.summary[:150] + '...' if n.summary else 'No summary'}" for n in recent_notes])
+        except Exception as e:
+             logger.error(f"Short-term fetch failed: {e}")
+             short_term_str = ""
+
+        if not short_term_str: short_term_str = "No recent notes."
 
         # Medium-Term
         medium_term_str = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
@@ -117,9 +131,9 @@ class RagService:
         long_term_str = await self.get_long_term_memory(note.user_id, db, query_text=note.transcription_text)
 
         return (
-            f"Short-term (Last actions):\n{short_term_str}\n\n"
-            f"Recent context (Related notes):\n{medium_term_str}\n\n"
-            f"Long-term knowledge (General themes):\n{long_term_str}"
+            f"Short-term (Last 5 notes):\n{short_term_str}\n\n"
+            f"Recent (RAG Context):\n{medium_term_str}\n\n"
+            f"Long-term (Identity & Themes):\n{long_term_str}"
         )
 
 rag_service = RagService()

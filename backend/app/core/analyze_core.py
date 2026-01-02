@@ -105,7 +105,10 @@ class AnalyzeCore:
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save
         """
         # 1. Context
-        user_bio = user.bio if user else None
+        user_bio = user.bio if user else ""
+        if user and getattr(user, "identity_summary", None):
+            user_bio += f"\n\nUser Identity Core: {user.identity_summary}"
+            
         target_lang = user.target_language if user else "Original"
         
         hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)

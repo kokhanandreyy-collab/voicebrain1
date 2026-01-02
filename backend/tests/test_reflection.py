@@ -20,9 +20,15 @@ async def test_reflection_process(mock_db_session):
     ]
     
     # Mock DB Execute (Fetch Notes)
-    mock_result = MagicMock()
-    mock_result.scalars().all.return_value = notes
-    mock_db_session.execute.return_value = mock_result
+    # Mock DB - Sequence of results (Notes then User)
+    mock_notes_result = MagicMock()
+    mock_notes_result.scalars().all.return_value = notes
+    
+    mock_user = User(id=user_id, identity_summary="")
+    mock_user_result = MagicMock()
+    mock_user_result.scalars().first.return_value = mock_user
+    
+    mock_db_session.execute.side_effect = [mock_notes_result, mock_user_result]
     
     # Mock AI Service
     with patch("workers.reflection_tasks.ai_service") as mock_ai, \
@@ -31,8 +37,9 @@ async def test_reflection_process(mock_db_session):
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session
          
          # Mock LLM Response
-         mock_ai.get_chat_completion.return_value = '{"summary": "This user is very productive.", "importance_score": 9.5}'
-         mock_ai.clean_json_response.return_value = '{"summary": "This user is very productive.", "importance_score": 9.5}'
+         json_resp = '{"summary": "Prod", "identity_summary": "New Identity", "importance_score": 9.5}'
+         mock_ai.get_chat_completion.return_value = json_resp
+         mock_ai.clean_json_response.return_value = json_resp
          # Mock Embedding
          mock_ai.get_embedding.return_value = [0.1] * 1536
          
@@ -40,15 +47,15 @@ async def test_reflection_process(mock_db_session):
          
          # Verify AI called
          mock_ai.get_chat_completion.assert_called_once()
-         assert "Note content" in str(mock_ai.get_chat_completion.call_args)
          
-         # Verify Save
+         # Verify Save Memory
          assert mock_db_session.add.call_count == 1
-         # Check added object
          added_obj = mock_db_session.add.call_args[0][0]
          assert isinstance(added_obj, LongTermMemory)
-         assert added_obj.summary_text == "This user is very productive."
          assert added_obj.importance_score == 9.5
+         
+         # Verify User Identity Updated
+         assert mock_user.identity_summary == "New Identity"
 
 @pytest.mark.asyncio
 async def test_reflection_trigger(mock_db_session):

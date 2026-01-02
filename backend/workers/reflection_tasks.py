@@ -31,10 +31,10 @@ async def _process_reflection_async(user_id: str):
         
         prompt = (
             "You are an AI assistant analyzing a user's life journals/notes. "
-            "Reflect on the key events, projects, communication style, habits, and changes in the user's life based on these notes. "
-            "Create a concise summary (200-400 words) capturing the essence of their recent history and persona. "
-            "Also evaluate the 'importance_score' of this reflection on a scale of 0 to 10 (10 being critical life-changing events, 0 being mundane). "
-            "Return a valid JSON object: { 'summary': '...', 'importance_score': float }."
+            "1. Reflect on the key events, projects, and changes (Summary). "
+            "2. Identify the user's communication style, priorities, top jargon/keywords, and habits (Identity). "
+            "3. Evaluate the importance score of these events (0-10). "
+            "Return JSON: { 'summary': '...', 'identity_summary': 'User speaks casually, focuses on tech startup, uses jargon like ARR/Churn', 'importance_score': float }."
             f"\n\nNotes:\n{notes_text}"
         )
         
@@ -54,6 +54,7 @@ async def _process_reflection_async(user_id: str):
                  return
 
              summary = data.get("summary", "")
+             identity = data.get("identity_summary", "")
              score = float(data.get("importance_score", 5.0))
              
              if not summary:
@@ -70,6 +71,14 @@ async def _process_reflection_async(user_id: str):
                  importance_score=score
              )
              db.add(memory)
+             
+             # 5. Update User Identity Logic
+             if identity:
+                 user_res = await db.execute(select(User).where(User.id == user_id))
+                 user = user_res.scalars().first()
+                 if user:
+                     user.identity_summary = identity
+
              await db.commit()
              logger.info(f"Reflection saved for user {user_id} (Score: {score})")
              

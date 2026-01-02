@@ -47,7 +47,7 @@ async def shutdown():
 # --- Router Configuration ---
 # --- Router Configuration ---
 from fastapi import Depends
-from app.api.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users
+from app.api.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users, settings
 
 api_router = APIRouter()
 
@@ -63,6 +63,7 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(settings.router, prefix="/user/settings", tags=["settings"])
 
 # Include the API router into the main app with version prefix
 app.include_router(api_router, prefix="/api/v1")

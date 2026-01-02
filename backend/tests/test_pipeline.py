@@ -110,7 +110,7 @@ async def test_pipeline_full_flow(mock_db_session):
 
 @pytest.mark.asyncio
 async def test_skip_integrations_by_flag(mock_db_session):
-    """Test that sync is skipped if feature flags disable it."""
+    """Test that sync is skipped if feature flags disable it GLOBAL check."""
     note_id = "test-note-2"
     user = User(id="user-1", feature_flags={"all_integrations": False}) # Global Disable
     note = Note(id=note_id, user_id=user.id, status=NoteStatus.ANALYZED) # Already Analyzed
@@ -132,21 +132,46 @@ async def test_skip_integrations_by_flag(mock_db_session):
          
         mock_session_cls.return_value.__aenter__.return_value = mock_db_session
         
-        # We need to simulate the Check inside sync_service?
-        # Wait, the check was implemented INSIDE sync_service.sync_note.
-        # So pipeline calls sync_service always, but sync_service effectively does nothing.
-        # OR does pipeline check flags?
-        # My previous step implemented flag check INSIDE sync_service.
-        # So pipeline SHOULD call sync_service.sync_note.
+        pipeline = NotePipeline()
+        await pipeline.process(note_id)
+        
+        # Pipeline logic (Step 788) checks flag and returns early
+        mock_sync.sync_note.assert_not_called()
+        assert note.status == NoteStatus.COMPLETED
+        assert "Skipped" in note.processing_step
+
+@pytest.mark.asyncio
+async def test_integration_explicit_chain(mock_db_session):
+    """Test that pipeline passes analyzed note to sync service."""
+    note_id = "test-note-chain"
+    user = User(id="user-1", feature_flags={"all_integrations": True})
+    note = Note(id=note_id, user_id=user.id, status=NoteStatus.ANALYZED)
+    note.ai_analysis = {"explicit_destination_app": "linear"} # Chain logic trigger
+    
+    mock_db_session.execute.return_value.scalars.return_value.first.return_value = note
+    
+    # Mock user fetch
+    def execute_side_effect(query):
+        if "FROM users" in str(query):
+             m = MagicMock()
+             m.scalars().first.return_value = user
+             return m
+        m = MagicMock()
+        m.scalars().first.return_value = note
+        return m
+    mock_db_session.execute = AsyncMock(side_effect=execute_side_effect)
+
+    with patch("app.services.pipeline.sync_service") as mock_sync, \
+         patch("app.services.pipeline.AsyncSessionLocal") as mock_session_cls:
+         
+        mock_session_cls.return_value.__aenter__.return_value = mock_db_session
         
         pipeline = NotePipeline()
         await pipeline.process(note_id)
         
-        mock_sync.sync_note.assert_called_once()
-        # The actual skipping happens inside the real sync_service logic.
-        # To test skipping, unit test `sync_service` instead?
-        # Or if we want to test pipeline, we verify it delegated correctly.
-        pass
+        # Verify sync called (SyncService handles the actual chaining logic)
+        mock_sync.sync_note.assert_called_once_with(note, mock_db_session)
+
 
 @pytest.mark.asyncio
 async def test_pipeline_error_handling(mock_db_session):

@@ -3,10 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from infrastructure.http_client import http_client
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from app.api.middleware.rate_limit import RateLimitMiddleware
+from app.api.middleware.auth import AuthMiddleware
 from infrastructure.rate_limit import limiter
 from infrastructure.config import settings
-import os
 
 app = FastAPI(title="VoiceBrain API")
 
@@ -22,7 +22,8 @@ app.add_middleware(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AuthMiddleware)
 
 # ...
 

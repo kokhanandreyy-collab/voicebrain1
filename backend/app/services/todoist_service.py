@@ -3,9 +3,9 @@ import httpx
 import os
 import json
 from loguru import logger
-from app.core.config import settings
+from app.infrastructure.config import settings
 import redis.asyncio as redis
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
 
 class TodoistService:
     def __init__(self) -> None:

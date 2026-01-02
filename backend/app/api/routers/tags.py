@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import text
 from typing import List
-from app.core.database import get_db
+from app.infrastructure.database import get_db
 from app.models import User, Note
 from app.schemas import TagUsage, TagMergeRequest
-from app.dependencies import get_current_user
+from app.api.dependencies import get_current_user
 
 router = APIRouter()
 

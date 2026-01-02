@@ -5,10 +5,10 @@ from sqlalchemy import update
 from typing import List, Optional
 from pydantic import BaseModel
 
-from app.core.database import get_db
+from app.infrastructure.database import get_db
 from app.models import User, Integration
 from app.schemas import IntegrationCreate, IntegrationResponse
-from app.dependencies import get_current_user
+from app.api.dependencies import get_current_user
 
 router = APIRouter(
     prefix="/integrations",
@@ -191,7 +191,7 @@ async def get_auth_url(provider: str):
     """
     import os
     import urllib.parse
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     cfg = INTEGRATION_CONFIG.get(provider)
     if not cfg:
@@ -244,7 +244,7 @@ class CallbackRequest(BaseModel):
 
 async def exchange_oauth_code(provider: str, code: str, referer: Optional[str] = None) -> dict:
     import os
-    from app.core.config import settings
+    from app.infrastructure.config import settings
     
     cfg = INTEGRATION_CONFIG.get(provider)
     if not cfg:

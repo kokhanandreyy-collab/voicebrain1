@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.core.database import get_db
+from app.infrastructure.database import get_db
 from app.models import User, UserTier, Plan
-from app.dependencies import get_current_user
-from app.core.config import settings
+from app.api.dependencies import get_current_user
+from app.infrastructure.config import settings
 from pydantic import BaseModel
 from typing import Literal
 

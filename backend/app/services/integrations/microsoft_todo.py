@@ -2,7 +2,7 @@ from .base import BaseIntegration
 from app.models import Integration, Note
 import httpx
 import logging
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 class MicrosoftTodoIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):

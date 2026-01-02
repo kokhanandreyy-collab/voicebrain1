@@ -7,8 +7,8 @@ import json
 import logging
 import datetime # Use module for timezone
 import asyncio
-from app.core.config import settings
-from app.core.http_client import http_client
+from app.infrastructure.config import settings
+from app.infrastructure.http_client import http_client
 
 class GoogleFitIntegration(BaseIntegration):
     async def ensure_token_valid(self, integration: Integration):

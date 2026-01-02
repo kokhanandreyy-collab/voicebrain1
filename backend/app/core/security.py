@@ -4,7 +4,7 @@ from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"

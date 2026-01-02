@@ -4,8 +4,8 @@ from aiogoogle import Aiogoogle
 from dateutil import parser
 import datetime
 import logging
-from app.core.config import settings
-from app.core.http_client import http_client
+from app.infrastructure.config import settings
+from app.infrastructure.http_client import http_client
 
 class GoogleCalendarIntegration(BaseIntegration):
     async def ensure_token_valid(self, integration: Integration, db):

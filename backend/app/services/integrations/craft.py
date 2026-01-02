@@ -1,6 +1,6 @@
 from .base import BaseIntegration
 from app.models import Integration, Note
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
 import logging
 
 class CraftIntegration(BaseIntegration):

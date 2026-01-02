@@ -4,11 +4,11 @@ from typing import Optional, Dict, Any
 from loguru import logger
 from sqlalchemy.future import select
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.models import Integration, Note, NoteEmbedding
 from app.services.ai_service import ai_service
 from app.core.security import encrypt_token
-from app.core.database import AsyncSessionLocal
+from app.infrastructure.database import AsyncSessionLocal
 
 class EmailService:
     def __init__(self):

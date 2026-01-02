@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from pydantic import BaseModel
 from app.models import User
-from app.dependencies import get_current_user
-from app.core.config import settings
+from app.api.dependencies import get_current_user
+from app.infrastructure.config import settings
 from app.core.bot import bot
 
 router = APIRouter()

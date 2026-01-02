@@ -1,7 +1,7 @@
 from .base import BaseIntegration
 from app.models import Integration, Note
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from app.core.config import settings
+from app.infrastructure.config import settings
 import logging
 
 class EmailIntegration(BaseIntegration):

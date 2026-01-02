@@ -1,6 +1,6 @@
 from .base import BaseIntegration
 from app.models import Integration, Note
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
 
 class ZapierIntegration(BaseIntegration):
     async def sync(self, integration: Integration, note: Note):

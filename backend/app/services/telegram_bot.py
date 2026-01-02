@@ -6,9 +6,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandObject, Command
 from aiogram.types import Message
 from sqlalchemy.future import select
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.core.bot import bot
-from app.core.database import AsyncSessionLocal
+from app.infrastructure.database import AsyncSessionLocal
 from app.models import User, Note
 from app.core.storage import storage_client
 from workers.transcribe_tasks import process_transcribe

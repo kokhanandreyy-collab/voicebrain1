@@ -3,7 +3,7 @@ from typing import Optional, List, Any, Dict
 import httpx
 from loguru import logger
 from app.models import Integration, Note
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
 
 class BaseIntegration(ABC):
     def __init__(self) -> None:

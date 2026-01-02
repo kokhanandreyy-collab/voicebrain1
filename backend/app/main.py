@@ -1,10 +1,10 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.http_client import http_client
+from app.infrastructure.http_client import http_client
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from app.core.limiter import limiter
+from app.infrastructure.rate_limit import limiter
 import os
 
 app = FastAPI(title="VoiceBrain API")
@@ -46,7 +46,7 @@ async def shutdown():
 # --- Router Configuration ---
 # --- Router Configuration ---
 from fastapi import Depends
-from app.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users
+from app.api.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users
 
 api_router = APIRouter()
 

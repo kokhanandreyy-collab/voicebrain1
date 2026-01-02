@@ -5,8 +5,8 @@ from aiogoogle.auth.creds import UserCreds
 import logging
 import json
 import datetime
-from app.core.config import settings
-from app.core.http_client import http_client
+from app.infrastructure.config import settings
+from app.infrastructure.http_client import http_client
 
 class GoogleDriveIntegration(BaseIntegration):
     async def ensure_token_valid(self, integration: Integration, db):

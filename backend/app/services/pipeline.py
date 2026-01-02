@@ -99,7 +99,7 @@ class NotePipeline:
         user = user_res.scalars().first()
         flags = user.feature_flags or {} if user else {}
         
-        if not flags.get("all", True) and not flags.get("sync_enabled", False):
+        if not flags.get("all_integrations", True) and not flags.get("sync_enabled", True): # Fallback or specific override
             logger.info(f"Sync skipped for user {note.user_id} due to feature flags")
             # We still complete the note to not hang it forever
             note.status = NoteStatus.COMPLETED

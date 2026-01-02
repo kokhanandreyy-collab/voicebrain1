@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
-from app.infrastructure.rate_limit import limiter
+from infrastructure.rate_limit import limiter
 from fastapi.responses import RedirectResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 from datetime import timedelta
 import os
-from app.infrastructure.database import get_db, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, VK_CLIENT_ID, VK_CLIENT_SECRET, MAILRU_CLIENT_ID, MAILRU_CLIENT_SECRET, TWITTER_CLIENT_ID, TWITTER_CLIENT_SECRET
+from infrastructure.database import get_db, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, VK_CLIENT_ID, VK_CLIENT_SECRET, MAILRU_CLIENT_ID, MAILRU_CLIENT_SECRET, TWITTER_CLIENT_ID, TWITTER_CLIENT_SECRET
 from app.models import User
 from app.core.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 import uuid
@@ -50,7 +50,7 @@ PROVIDERS = {
     }
 }
 
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 @router.get("/{provider}/login")
 async def login_via_provider(provider: str):

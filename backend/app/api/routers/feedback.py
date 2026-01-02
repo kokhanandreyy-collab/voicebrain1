@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 from app.models import User
 from app.api.dependencies import get_current_user
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 from app.core.bot import bot
 
 router = APIRouter()

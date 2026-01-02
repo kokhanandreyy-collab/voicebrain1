@@ -1,4 +1,4 @@
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 broker_url = settings.CELERY_BROKER_URL
 result_backend = settings.CELERY_RESULT_BACKEND

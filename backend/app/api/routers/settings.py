@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Dict, Any
 
-from app.infrastructure.database import get_db
+from infrastructure.database import get_db
 from app.models import User
 from app.dependencies import get_current_user
 

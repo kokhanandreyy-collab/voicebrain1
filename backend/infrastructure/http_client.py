@@ -1,4 +1,4 @@
-from app.infrastructure.http_robust import RobustAsyncClient
+from infrastructure.http_robust import RobustAsyncClient
 import httpx
 from loguru import logger
 

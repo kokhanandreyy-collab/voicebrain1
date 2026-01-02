@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.path.join(os.getcwd()))
 
 from app.core.security import encrypt_token, decrypt_token
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 def test_encryption():
     print(f"Testing with key: {settings.ENCRYPTION_KEY[:10]}...")

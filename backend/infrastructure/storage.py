@@ -4,7 +4,7 @@ import os
 import logging
 import shutil
 from typing import Union, BinaryIO
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 # Configuration (In a real app, use settings.py/pydantic)
 S3_BUCKET_NAME = settings.S3_BUCKET_NAME

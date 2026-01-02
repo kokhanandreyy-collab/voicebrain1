@@ -1,6 +1,6 @@
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 # Initialize Limiter with Redis storage
 limiter = Limiter(

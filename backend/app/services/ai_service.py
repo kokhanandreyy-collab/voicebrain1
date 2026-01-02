@@ -5,7 +5,7 @@ import json
 import redis.asyncio as redis
 from openai import AsyncOpenAI
 from loguru import logger
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 from sqlalchemy.future import select
 from app.models import Note, User
 from app.core.types import AnalysisResult
@@ -34,7 +34,7 @@ class AIService:
             "authorization": aai_key
         }
 
-        from app.infrastructure.http_client import http_client
+        from infrastructure.http_client import http_client
         try:
             # 1. Upload
             logger.info("Uploading audio to AssemblyAI...")
@@ -119,7 +119,7 @@ class AIService:
         
         # 2. Check DB
         try:
-            from app.infrastructure.database import AsyncSessionLocal
+            from infrastructure.database import AsyncSessionLocal
             from app.models import SystemPrompt
             
             async with AsyncSessionLocal() as session:

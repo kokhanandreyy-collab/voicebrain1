@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from asgiref.sync import async_to_sync
 
 from app.models import Note, User, NoteStatus
-from app.infrastructure.database import AsyncSessionLocal
-from app.infrastructure.config import settings
+from infrastructure.database import AsyncSessionLocal
+from infrastructure.config import settings
 
 # Core Business Logic
 from app.core.analyze_core import analyze_core

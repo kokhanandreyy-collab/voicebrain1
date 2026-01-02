@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 SMTP_SERVER = settings.SMTP_HOST
 SMTP_PORT = settings.SMTP_PORT

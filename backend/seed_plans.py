@@ -1,5 +1,5 @@
 import asyncio
-from app.infrastructure.database import AsyncSessionLocal, engine
+from infrastructure.database import AsyncSessionLocal, engine
 from app.models import Plan, Base
 from sqlalchemy import text
 

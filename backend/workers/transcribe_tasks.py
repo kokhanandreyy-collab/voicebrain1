@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery
 from app.models import Note, User
-from app.infrastructure.database import AsyncSessionLocal
+from infrastructure.database import AsyncSessionLocal
 from app.core.audio import audio_processor
 
 # Kept steps here or use audio processor?

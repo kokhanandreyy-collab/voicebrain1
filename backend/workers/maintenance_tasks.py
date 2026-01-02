@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery
 from app.models import Note, User, NoteEmbedding, UserTier
-from app.infrastructure.database import AsyncSessionLocal
-from app.infrastructure.storage import storage_client
+from infrastructure.database import AsyncSessionLocal
+from infrastructure.storage import storage_client
 from app.services.ai_service import ai_service
-from app.infrastructure.http_client import http_client
-from app.infrastructure.config import settings
+from infrastructure.http_client import http_client
+from infrastructure.config import settings
 
 @celery.task(name="cluster_notes")
 def cluster_notes_task(user_id: str):

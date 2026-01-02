@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy import or_, update
 from typing import List
 
-from app.infrastructure.database import get_db
+from infrastructure.database import get_db
 from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
 from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ from app.api.dependencies import get_current_user
 from typing import Optional
 from datetime import datetime, timezone
 from fastapi_limiter.depends import RateLimiter
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 router = APIRouter()
 

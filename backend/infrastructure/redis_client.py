@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any, Optional
 import redis.asyncio as redis
-from app.infrastructure.config import settings
+from infrastructure.config import settings
 
 class ShortTermMemory:
     """

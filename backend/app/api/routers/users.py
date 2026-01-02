@@ -5,7 +5,7 @@ from sqlalchemy import func, desc, case
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
-from app.infrastructure.database import get_db
+from infrastructure.database import get_db
 from app.models import User, Note, IntegrationLog, Plan, UserTier
 from app.api.dependencies import get_current_user
 from pydantic import BaseModel

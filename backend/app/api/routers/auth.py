@@ -1,8 +1,8 @@
-from app.infrastructure.rate_limit import limiter
+from infrastructure.rate_limit import limiter
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.infrastructure.database import get_db
+from infrastructure.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserLogin, Token, UserResponse, UserUpdate
 from app.api.dependencies import get_current_user
@@ -165,7 +165,7 @@ async def delete_account(
     Permanently delete user account and all associated data.
     """
     from app.models import Note
-    from app.infrastructure.storage import storage_client
+    from infrastructure.storage import storage_client
     import os
     from urllib.parse import urlparse
     import logging

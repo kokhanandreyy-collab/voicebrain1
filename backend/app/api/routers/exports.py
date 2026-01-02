@@ -3,7 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.infrastructure.database import get_db
+from infrastructure.database import get_db
 from app.models import User, Note
 from app.api.dependencies import get_current_user
 from pydantic import BaseModel

@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 from app.models import Integration, Note, NoteEmbedding
 from app.services.ai_service import ai_service
 from app.core.security import encrypt_token, decrypt_token
-from app.infrastructure.database import AsyncSessionLocal
+from infrastructure.database import AsyncSessionLocal
 
 class ObsidianService:
     async def connect(self, user_id: str, vault_path: str) -> str:

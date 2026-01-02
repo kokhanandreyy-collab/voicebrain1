@@ -4,8 +4,8 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from app.main import app
-from app.infrastructure.database import Base, get_db
-from app.infrastructure.config import settings
+from infrastructure.database import Base, get_db
+from infrastructure.config import settings
 
 # Test Database URL
 TEST_DATABASE_URL = settings.DATABASE_URL.replace("voicebrain_db", "voicebrain_test")
@@ -47,7 +47,7 @@ async def async_client(db_session):
     # import redis.asyncio as redis
     # from app.routers.notes import RateLimiter # Path likely changed?
     # Actually routers are in app.api.routers now.
-    from app.infrastructure.rate_limit import limiter
+    from infrastructure.rate_limit import limiter
     # We can't easily mock limiter instance but we can mock the dependency if used.
     # But usually limiter is global. 
     # Let's just yield client.
@@ -60,7 +60,7 @@ async def async_client(db_session):
 # Mocks
 @pytest.fixture(autouse=True)
 def mock_storage(monkeypatch):
-    from app.infrastructure.storage import storage_client
+    from infrastructure.storage import storage_client
     async def mock_upload(file_obj, key, **kwargs):
         return f"http://mock-s3.local/{key}"
     monkeypatch.setattr(storage_client, "upload_file", mock_upload)

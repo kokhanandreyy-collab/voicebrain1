@@ -158,3 +158,32 @@ async def _generate_weekly_review_async() -> None:
         await db.commit()
     except Exception as e: logger.error(f"Weekly Review Error: {e}")
     finally: await db.close()
+@celery.task(name="cleanup_memory")
+def cleanup_memory_task():
+    async_to_sync(_cleanup_memory_async)()
+
+async def _cleanup_memory_async() -> None:
+    from app.models import LongTermMemory
+    logger.info("Starting long-term memory cleanup...")
+    db: AsyncSession = AsyncSessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+        
+        # Delete low score memories older than 90 days
+        result = await db.execute(select(LongTermMemory).where(
+            LongTermMemory.importance_score < 4.0,
+            LongTermMemory.created_at < cutoff
+        ))
+        memories = result.scalars().all()
+        
+        count = 0
+        for mem in memories:
+            await db.delete(mem)
+            count += 1
+            
+        await db.commit()
+        logger.info(f"Cleanup memory complete. Deleted {count} unimportant records.")
+    except Exception as e:
+        logger.error(f"Cleanup Memory Error: {e}")
+    finally:
+        await db.close()

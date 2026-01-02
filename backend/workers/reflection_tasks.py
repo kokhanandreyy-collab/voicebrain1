@@ -33,38 +33,33 @@ async def _process_reflection_async(user_id: str):
             "You are an AI assistant analyzing a user's life journals/notes. "
             "Reflect on the key events, projects, communication style, habits, and changes in the user's life based on these notes. "
             "Create a concise summary (200-400 words) capturing the essence of their recent history and persona. "
+            "Also evaluate the 'importance_score' of this reflection on a scale of 0 to 10 (10 being critical life-changing events, 0 being mundane). "
+            "Return a valid JSON object: { 'summary': '...', 'importance_score': float }."
             f"\n\nNotes:\n{notes_text}"
         )
         
         # 3. Call DeepSeek
         try:
-             # Assuming ai_service has a method for raw prompt or generic analysis
-             # `analyze_text` usually expects a note, but we can use `extract_health_metrics` style or new method.
-             # Let's check `ai_service` existence. Assuming `ai_service.ask_custom(prompt)` or use direct client.
-             # Since I can't check `ai_service` deeply now, I will use `request_completion` if available or similar.
-             # Wait, `ai_service.py` was seen in context history.
-             # It has `ask_notes` which uses RAG.
-             # I need a simple LLM call.
-             # I will assume `ai_service.get_completion(prompt)`. If not, I'll use `ask_notes` logic or similar.
-             # Better: Use `ai_service.client` (OpenAI/AsyncOpenAI) directly if exposed, or add a method.
-             # I'll optimistically use `ai_service.get_simple_completion(prompt)`.
-             # If I get an error, I'll fix it. Or I can implement logic here using `infrastructure.config`.
-             
-             # Actually, `ai_service` usually wraps the provider.
-             # I will use `ai_service.analyze_text` with specialized system prompt override if possible, or just raw.
-             # Let's assume `ai_service.generate_summary(text)` exists or generic.
-             # I'll use `ai_service.client.chat.completions.create` if I can access client.
-             
-             # To be safe, I'll implement `_call_llm` helper locally here or rely on `ai_service`.
-             # Let's assume `ai_service` has `get_chat_completion(messages)`.
-             
-             summary = await ai_service.get_chat_completion([
-                 {"role": "system", "content": "You are a helpful assistant."},
+             import json
+             response_text = await ai_service.get_chat_completion([
+                 {"role": "system", "content": "You are a helpful assistant. Return ONLY valid JSON."},
                  {"role": "user", "content": prompt}
              ])
-             # Note: I need to ensure `get_chat_completion` exists. If not, I'll likely break.
-             # BUT, I'm writing the code. I can invoke `reflection_daily` from test and mock the service.
              
+             cleaned = ai_service.clean_json_response(response_text)
+             try:
+                 data = json.loads(cleaned)
+             except json.JSONDecodeError:
+                 logger.error(f"Reflection JSON Decode Error: {response_text}")
+                 return
+
+             summary = data.get("summary", "")
+             score = float(data.get("importance_score", 5.0))
+             
+             if not summary:
+                 logger.warning("Empty summary from reflection.")
+                 return
+
              # 4. Save to LongTermMemory
              embedding = await ai_service.get_embedding(summary)
              
@@ -72,11 +67,11 @@ async def _process_reflection_async(user_id: str):
                  user_id=user_id,
                  summary_text=summary,
                  embedding=embedding,
-                 importance_score=8.0 
+                 importance_score=score
              )
              db.add(memory)
              await db.commit()
-             logger.info(f"Reflection saved for user {user_id}")
+             logger.info(f"Reflection saved for user {user_id} (Score: {score})")
              
         except Exception as e:
             logger.error(f"Reflection failed: {e}")

@@ -5,7 +5,7 @@ from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai_service import ai_service
-from app.models import Note, NoteEmbedding, LongTermSummary
+from app.models import Note, NoteEmbedding, LongTermMemory
 from infrastructure.redis_client import short_term_memory
 
 class RagService:
@@ -41,14 +41,6 @@ class RagService:
             vector_notes = list(vector_res.scalars().all())
 
             # 2. Graph Traversal (1-hop)
-            # Find notes related to ANY of the user's top notes? Or just related to CURRENT note?
-            # Current note might be new and have no relations yet.
-            # RAG is used for analysis OF the current note.
-            # So graph traversal isn't helpful for a *new* note which is not in the graph yet.
-            # However, if we are analyzing a note that *was* in the graph or we use vector_notes to find *their* relations (2nd hop)?
-            # "Traversal of graph + cosine".
-            # Typically means: Vector search gives nodes -> Expand graph from those nodes.
-            
             related_ids = set([n.id for n in vector_notes])
             if related_ids:
                 graph_res = await db.execute(
@@ -64,7 +56,6 @@ class RagService:
                     related_ids.add(target)
             
             # Fetch content for extended graph
-            # Limit total to e.g. 10
             final_ids = list(related_ids)[:10]
             if not final_ids:
                 final_notes = []
@@ -82,17 +73,32 @@ class RagService:
             logger.error(f"Medium-Term retrieval failed: {e}")
             return ""
 
-    async def get_long_term_memory(self, user_id: str, db: AsyncSession) -> str:
-        """Fetch top 3 high-importance long-term summaries."""
+    async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
+        """Fetch top long-term memories. Prioritize high importance, then relevance + date."""
         try:
-            result = await db.execute(
-                select(LongTermSummary)
-                .where(LongTermSummary.user_id == user_id)
-                .order_by(desc(LongTermSummary.importance_score))
-                .limit(3)
-            )
-            summaries = list(result.scalars().all())
-            parts = [f"- {s.summary_text}" for s in summaries]
+            if query_text:
+                 query_vec = await ai_service.generate_embedding(query_text)
+                 # Hybrid: Get 20 most similar, then pick top 5 most important
+                 result = await db.execute(
+                     select(LongTermMemory)
+                     .where(LongTermMemory.user_id == user_id)
+                     .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
+                     .limit(20)
+                 )
+                 candidates = result.scalars().all()
+                 # Sort by score DESC, then date DESC
+                 candidates.sort(key=lambda x: (x.importance_score or 0, x.created_at), reverse=True)
+                 final = candidates[:5]
+            else:
+                 result = await db.execute(
+                     select(LongTermMemory)
+                     .where(LongTermMemory.user_id == user_id)
+                     .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
+                     .limit(5)
+                 )
+                 final = result.scalars().all()
+
+            parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]
             return "\n".join(parts) if parts else "No long-term knowledge recorded yet."
         except Exception as e:
             logger.error(f"Long-Term retrieval failed: {e}")
@@ -108,7 +114,7 @@ class RagService:
         medium_term_str = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
 
         # Long-Term
-        long_term_str = await self.get_long_term_memory(note.user_id, db)
+        long_term_str = await self.get_long_term_memory(note.user_id, db, query_text=note.transcription_text)
 
         return (
             f"Short-term (Last actions):\n{short_term_str}\n\n"

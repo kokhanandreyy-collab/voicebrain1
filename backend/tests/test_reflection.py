@@ -31,7 +31,8 @@ async def test_reflection_process(mock_db_session):
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session
          
          # Mock LLM Response
-         mock_ai.get_chat_completion.return_value = "This user is very productive."
+         mock_ai.get_chat_completion.return_value = '{"summary": "This user is very productive.", "importance_score": 9.5}'
+         mock_ai.clean_json_response.return_value = '{"summary": "This user is very productive.", "importance_score": 9.5}'
          # Mock Embedding
          mock_ai.get_embedding.return_value = [0.1] * 1536
          
@@ -47,7 +48,7 @@ async def test_reflection_process(mock_db_session):
          added_obj = mock_db_session.add.call_args[0][0]
          assert isinstance(added_obj, LongTermMemory)
          assert added_obj.summary_text == "This user is very productive."
-         assert added_obj.importance_score == 8.0
+         assert added_obj.importance_score == 9.5
 
 @pytest.mark.asyncio
 async def test_reflection_trigger(mock_db_session):

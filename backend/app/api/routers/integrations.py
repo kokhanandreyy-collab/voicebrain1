@@ -189,7 +189,6 @@ async def get_auth_url(provider: str):
     """
     Returns the real OAuth2 URL for the given provider.
     """
-    import os
     import urllib.parse
     from app.infrastructure.config import settings
 
@@ -208,10 +207,17 @@ async def get_auth_url(provider: str):
         base_url = cfg["auth_url"]
         scope = cfg["scope"]
         
-    client_id = os.getenv(f"{provider.upper()}_CLIENT_ID")
+    # Get client_id dynamically from settings
+    # E.g. provider="google" -> settings.GOOGLE_CLIENT_ID (but here provider is "google_calendar"...)
+    # We need a robust mapping or logic.
+    # The original code was: os.getenv(f"{provider.upper()}_CLIENT_ID")
+    # We can replicate "getattr(settings, ...)"
+    
+    attr_name = f"{provider.upper()}_CLIENT_ID"
+    client_id = getattr(settings, attr_name, None)
     
     # Frontend Callback Route
-    redirect_uri = f"{os.getenv('VITE_APP_URL', 'http://localhost:5173')}/settings/callback/{provider}"
+    redirect_uri = f"{settings.VITE_APP_URL}/settings/callback/{provider}"
     
     if not client_id:
         return {"url": f"{redirect_uri}?code=mock_{provider}_code&state=mock"}
@@ -243,7 +249,6 @@ class CallbackRequest(BaseModel):
     referer: Optional[str] = None # For AmoCRM
 
 async def exchange_oauth_code(provider: str, code: str, referer: Optional[str] = None) -> dict:
-    import os
     from app.infrastructure.config import settings
     
     cfg = INTEGRATION_CONFIG.get(provider)
@@ -251,9 +256,9 @@ async def exchange_oauth_code(provider: str, code: str, referer: Optional[str] =
         # Fallback support if we added provider to dict above dynamically
         raise ValueError(f"Provider {provider} not configured for exchange.")
 
-    client_id = os.getenv(f"{provider.upper()}_CLIENT_ID")
-    client_secret = os.getenv(f"{provider.upper()}_CLIENT_SECRET")
-    redirect_uri = f"{os.getenv('VITE_APP_URL', 'http://localhost:5173')}/settings/callback/{provider}"
+    client_id = getattr(settings, f"{provider.upper()}_CLIENT_ID", None)
+    client_secret = getattr(settings, f"{provider.upper()}_CLIENT_SECRET", None)
+    redirect_uri = f"{settings.VITE_APP_URL}/settings/callback/{provider}"
 
     if not client_id or not client_secret:
          raise ValueError("Missing provider credentials.")

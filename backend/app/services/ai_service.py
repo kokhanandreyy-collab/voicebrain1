@@ -1,6 +1,5 @@
 from typing import List, Optional, Dict, Any, Union
 import asyncio
-import os
 import hashlib
 import json
 import redis.asyncio as redis
@@ -14,7 +13,7 @@ import httpx # Import httpx for specific exceptions
 
 class AIService:
     def __init__(self) -> None:
-        self.api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.api_key: Optional[str] = settings.OPENAI_API_KEY
         self.client: Optional[AsyncOpenAI] = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
         # Redis Cache
         self.redis: redis.Redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
@@ -24,7 +23,7 @@ class AIService:
         Transcribe audio using AssemblyAI API.
         """
         
-        aai_key: Optional[str] = os.getenv("ASSEMBLYAI_API_KEY")
+        aai_key: Optional[str] = settings.ASSEMBLYAI_API_KEY
         
         if not aai_key:
             logger.warning("ASSEMBLYAI_API_KEY not found. Using Mock Fallback.")
@@ -143,8 +142,8 @@ class AIService:
         Analyze text using DeepSeek V3 (via OpenAI-compatible API).
         """
         # Configure Analysis Client (DeepSeek > OpenAI > Mock)
-        deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
-        deepseek_base: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
+        deepseek_base: str = settings.DEEPSEEK_BASE_URL
         
         analysis_client: Optional[AsyncOpenAI] = None
         analysis_model: str = "gpt-4o"
@@ -335,8 +334,8 @@ class AIService:
                 logger.error(f"Error fetching historical health data: {e}")
 
         # 2. Setup AI Client
-        deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
-        deepseek_base: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
+        deepseek_base: str = settings.DEEPSEEK_BASE_URL
         
         analysis_client: Optional[AsyncOpenAI] = None
         if deepseek_key:
@@ -446,9 +445,9 @@ class AIService:
             user_content: str = f"Context:\n{context}\n\nQuestion: {question}"
 
             # Use DeepSeek if available, else gpt-4o-mini (cost effective)
-            deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+            deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
             if deepseek_key:
-                client = AsyncOpenAI(api_key=deepseek_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+                client = AsyncOpenAI(api_key=deepseek_key, base_url=settings.DEEPSEEK_BASE_URL)
                 model = "deepseek-chat"
             else:
                 client = self.client
@@ -497,9 +496,9 @@ class AIService:
                 system_prompt += f"\n{lang_instruction}"
             
             # Use DeepSeek or GPT-4o-mini
-            deepseek_key: Optional[str] = os.getenv("DEEPSEEK_API_KEY")
+            deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
             if deepseek_key:
-                client = AsyncOpenAI(api_key=deepseek_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+                client = AsyncOpenAI(api_key=deepseek_key, base_url=settings.DEEPSEEK_BASE_URL)
                 model = "deepseek-chat"
             else:
                 client = self.client

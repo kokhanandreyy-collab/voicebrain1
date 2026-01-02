@@ -1,7 +1,6 @@
-import os
 import secrets
-from typing import Optional, Any
-from pydantic import field_validator, ValidationInfo
+from typing import Optional, List
+from pydantic import field_validator, ValidationInfo, AnyHttpUrl
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -10,6 +9,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SECRET_KEY: Optional[str] = None
     ENCRYPTION_KEY: Optional[str] = None
+    VITE_APP_URL: str = "http://localhost:5173"
+    ALLOWED_ORIGINS: str = "http://localhost:5173"
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod
@@ -17,8 +18,8 @@ class Settings(BaseSettings):
         if v:
             return v
             
-        # Check environment from data or os
-        env = info.data.get("ENVIRONMENT") or os.getenv("ENVIRONMENT", "development")
+        # Check environment from data
+        env = info.data.get("ENVIRONMENT", "development")
         
         if env == "development":
              print("\033[93mWARNING: SECRET_KEY not found. Using dev key.\033[0m")
@@ -32,7 +33,7 @@ class Settings(BaseSettings):
         if v:
             return v
         
-        env = info.data.get("ENVIRONMENT") or os.getenv("ENVIRONMENT", "development")
+        env = info.data.get("ENVIRONMENT", "development")
         if env == "development":
             # For development, we return a valid but insecure key if not provided
             # generated via Fernet.generate_key()
@@ -44,13 +45,18 @@ class Settings(BaseSettings):
     API_BASE_URL: str = "http://localhost:8000"
     
     # Database
-    DATABASE_URL: Optional[str] = "postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db"
+    DATABASE_URL: str = "postgresql+asyncpg://voicebrain:voicebrain_secret@db:5432/voicebrain_db"
     REDIS_URL: str = "redis://redis:6379"
+
+    # Celery
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
 
     # External Services
     OPENAI_API_KEY: Optional[str] = None
     ASSEMBLYAI_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     
     # Google Maps
     GOOGLE_MAPS_API_KEY: Optional[str] = None
@@ -84,16 +90,41 @@ class Settings(BaseSettings):
     # Storage
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    S3_BUCKET_NAME: Optional[str] = "voicebrain-audio-dev"
+    S3_BUCKET_NAME: str = "voicebrain-audio-dev"
+    S3_ENDPOINT_URL: Optional[str] = None
+    S3_REGION_NAME: str = "us-east-1"
 
-    # Auth
+    # Auth & Integrations
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    VK_CLIENT_ID: Optional[str] = None
+    VK_CLIENT_SECRET: Optional[str] = None
+    MAILRU_CLIENT_ID: Optional[str] = None
+    MAILRU_CLIENT_SECRET: Optional[str] = None
+    TWITTER_CLIENT_ID: Optional[str] = None
+    TWITTER_CLIENT_SECRET: Optional[str] = None
+    DROPBOX_CLIENT_ID: Optional[str] = None
+    DROPBOX_CLIENT_SECRET: Optional[str] = None
+    TODOIST_CLIENT_ID: Optional[str] = None
+    TODOIST_CLIENT_SECRET: Optional[str] = None
+    LINEAR_CLIENT_ID: Optional[str] = None
+    LINEAR_CLIENT_SECRET: Optional[str] = None
+    JIRA_CLIENT_ID: Optional[str] = None
+    JIRA_CLIENT_SECRET: Optional[str] = None
+    CLICKUP_CLIENT_ID: Optional[str] = None
+    CLICKUP_CLIENT_SECRET: Optional[str] = None
+    NOTION_CLIENT_ID: Optional[str] = None
+    NOTION_CLIENT_SECRET: Optional[str] = None
+    SLACK_CLIENT_ID: Optional[str] = None
+    SLACK_CLIENT_SECRET: Optional[str] = None
+    AMOCRM_CLIENT_ID: Optional[str] = None
+    AMOCRM_CLIENT_SECRET: Optional[str] = None
+
 
     # SMTP Settings (for Email integration)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: str = "apikey" # Default for SendGrid or similar, or real email
+    SMTP_USER: str = "apikey" 
     SMTP_PASSWORD: str = "password"
     SMTP_FROM: str = "VoiceBrain <no-reply@voicebrain.app>"
 

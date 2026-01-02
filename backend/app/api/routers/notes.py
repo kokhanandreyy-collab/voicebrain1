@@ -13,6 +13,7 @@ from app.api.dependencies import get_current_user
 from typing import Optional
 from datetime import datetime, timezone
 from fastapi_limiter.depends import RateLimiter
+from app.infrastructure.config import settings
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ async def upload_note(
     # 1. Stream to Temp File
     import shutil
     import tempfile
-    import os
+    import os # Keep os for file operations like close/remove
     
     file_ext = file.filename.split('.')[-1] if '.' in file.filename else "webm"
     # Create temp file
@@ -174,8 +175,7 @@ async def upload_note(
     from workers.transcribe_tasks import process_transcribe
     try:
         # Check if Redis is available, otherwise run inline
-        import os
-        if os.getenv("CELERY_BROKER_URL"):
+        if settings.CELERY_BROKER_URL:
              process_transcribe.delay(new_note.id)
         else:
              print("[Warning] No Celery Broker. Running task synchronously.")

@@ -7,18 +7,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.mailgun.org")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "postmaster@sandbox.mailgun.org")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "secret")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "VoiceBrain <noreply@voicebrain.ai>")
+from app.infrastructure.config import settings
+
+SMTP_SERVER = settings.SMTP_HOST
+SMTP_PORT = settings.SMTP_PORT
+SMTP_USERNAME = settings.SMTP_USER
+SMTP_PASSWORD = settings.SMTP_PASSWORD
+EMAIL_FROM = settings.SMTP_FROM
 
 async def send_email(to_email: str, subject: str, body: str):
     """
     Sends an email using SMTP.
     Replaces the previous mock print statements.
     """
-    if os.getenv("ENVIRONMENT") == "development" and not os.getenv("SMTP_PASSWORD"):
+    if settings.ENVIRONMENT == "development" and not settings.SMTP_PASSWORD:
         logger.info(f"[MOCK EMAIL] To: {to_email} | Subject: {subject}")
         logger.info(f"Body: {body}")
         return True

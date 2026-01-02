@@ -4,13 +4,14 @@ import os
 import logging
 import shutil
 from typing import Union, BinaryIO
+from app.infrastructure.config import settings
 
 # Configuration (In a real app, use settings.py/pydantic)
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "voicebrain-audio-dev")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL") # For MinIO or Cloudflare R2
-S3_REGION_NAME = os.getenv("S3_REGION_NAME", "us-east-1")
+S3_BUCKET_NAME = settings.S3_BUCKET_NAME
+AWS_ACCESS_KEY_ID = settings.AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY = settings.AWS_SECRET_ACCESS_KEY
+S3_ENDPOINT_URL = settings.S3_ENDPOINT_URL # For MinIO or Cloudflare R2
+S3_REGION_NAME = settings.S3_REGION_NAME
 
 logger = logging.getLogger(__name__)
 

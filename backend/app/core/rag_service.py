@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai_service import ai_service
 from app.models import Note, NoteEmbedding, LongTermSummary
-from app.utils.redis import short_term_memory
+from app.infrastructure.redis_client import short_term_memory
 
 class RagService:
     async def embed_note(self, note: Note, db: AsyncSession) -> None:

@@ -2,7 +2,7 @@ from typing import Dict, Any, List, Optional
 from app.models import Note, User, AIAnalysisPack
 from app.services.ai_service import ai_service
 from app.core.rag_service import rag_service
-from app.utils.redis import short_term_memory
+from app.infrastructure.redis_client import short_term_memory
 from app.core.types import AIAnalysisPack
 
 class IntentDetectionService:

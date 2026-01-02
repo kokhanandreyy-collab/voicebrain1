@@ -6,7 +6,7 @@ import subprocess
 from typing import Tuple
 from loguru import logger
 from app.services.ai_service import ai_service
-from app.core.storage import storage_client
+from app.infrastructure.storage import storage_client
 from app.models import Note
 
 class AudioProcessor:

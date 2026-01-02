@@ -1,6 +1,6 @@
 from asgiref.sync import async_to_sync
 from app.celery_app import celery
-from app.core.database import AsyncSessionLocal
+from app.infrastructure.database import AsyncSessionLocal
 from app.core.sync_service import sync_service
 
 async def _process_sync_async(note_id: str) -> None:

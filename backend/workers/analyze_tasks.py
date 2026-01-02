@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.celery_app import celery
 from app.services.ai_service import ai_service
 from app.models import Note, User, NoteEmbedding
-from app.core.database import AsyncSessionLocal
+from app.infrastructure.database import AsyncSessionLocal
 from app.core.types import AIAnalysisPack
 
 async def _process_analyze_async(note_id: str) -> None:

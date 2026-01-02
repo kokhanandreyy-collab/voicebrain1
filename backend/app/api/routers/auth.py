@@ -165,7 +165,7 @@ async def delete_account(
     Permanently delete user account and all associated data.
     """
     from app.models import Note
-    from app.core.storage import storage_client
+    from app.infrastructure.storage import storage_client
     import os
     from urllib.parse import urlparse
     import logging

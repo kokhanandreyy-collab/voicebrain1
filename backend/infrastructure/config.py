@@ -1,6 +1,5 @@
-import secrets
-from typing import Optional, List
-from pydantic import field_validator, ValidationInfo, AnyHttpUrl
+from typing import Optional
+from pydantic import field_validator, ValidationInfo
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -36,7 +35,6 @@ class Settings(BaseSettings):
         env = info.data.get("ENVIRONMENT", "development")
         if env == "development":
             # For development, we return a valid but insecure key if not provided
-            # generated via Fernet.generate_key()
             return "GiqaWijI1m94xqMrFtlzpMr2qOzYKyqHWjkowdri1-0="
             
         raise ValueError("ENCRYPTION_KEY must be set in production environment!")

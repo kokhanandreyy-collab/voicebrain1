@@ -6,6 +6,8 @@ from asgiref.sync import async_to_sync
 from app.models import Note, User, NoteStatus
 from infrastructure.database import AsyncSessionLocal
 from infrastructure.config import settings
+from infrastructure.storage import storage_client
+from infrastructure.redis_client import short_term_memory
 
 # Core Business Logic
 from app.core.analyze_core import analyze_core
@@ -59,7 +61,7 @@ class NotePipeline:
         await db.commit()
 
         # Use Core Audio Processor
-        text, duration = await audio_processor.process_audio(note)
+        text, duration = await audio_processor.process_audio(note, storage_client)
         
         note.transcription_text = text
         if duration > 0:
@@ -84,7 +86,7 @@ class NotePipeline:
         user = user_res.scalars().first()
 
         # Use Core Analyze (includes RAG + Intent)
-        await analyze_core.analyze_step(note, user, db)
+        await analyze_core.analyze_step(note, user, db, short_term_memory)
         
         note.status = NoteStatus.ANALYZED
         await db.commit()

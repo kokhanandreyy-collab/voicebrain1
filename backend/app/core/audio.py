@@ -3,18 +3,17 @@ import os
 import shutil
 import tempfile
 import subprocess
-from typing import Tuple
+from typing import Tuple, Any
 from loguru import logger
 from app.services.ai_service import ai_service
-from infrastructure.storage import storage_client
 from app.models import Note
 
 class AudioProcessor:
-    async def process_audio(self, note: Note) -> Tuple[str, int]:
+    async def process_audio(self, note: Note, storage_client: Any) -> Tuple[str, int]:
         """Orchestrates download, optimization, and transcription."""
         
         # 1. Download
-        content = await self.download_audio(note)
+        content = await self.download_audio(note, storage_client)
         
         # 2. Optimize
         content = await self.remove_silence(content)
@@ -24,7 +23,7 @@ class AudioProcessor:
         
         return text, duration
 
-    async def download_audio(self, note: Note) -> bytes:
+    async def download_audio(self, note: Note, storage_client: Any) -> bytes:
         if note.storage_key:
             return await storage_client.read_file(note.storage_key)
         

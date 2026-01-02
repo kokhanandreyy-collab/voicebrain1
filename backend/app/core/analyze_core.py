@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ai_service import ai_service
 from app.models import Note, User, NoteEmbedding, LongTermSummary, NoteRelation
 from app.core.types import AIAnalysisPack
-from infrastructure.redis_client import short_term_memory
 
 class RagService:
     async def embed_note(self, note: Note, db: AsyncSession) -> None:
@@ -87,8 +86,8 @@ class RagService:
             logger.error(f"Long-Term retrieval failed: {e}")
             return ""
 
-    async def build_hierarchical_context(self, note: Note, db: AsyncSession) -> str:
-        st_history = await short_term_memory.get_history(note.user_id)
+    async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any) -> str:
+        st_history = await memory_service.get_history(note.user_id)
         short_term_str = "\n".join([f"- {item.get('text', str(item))}" for item in st_history]) if st_history else "No recent history."
         medium_term_str = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
         long_term_str = await self.get_long_term_memory(note.user_id, db)
@@ -101,7 +100,7 @@ class RagService:
 rag_service = RagService()
 
 class AnalyzeCore:
-    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession) -> Dict[str, Any]:
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
         """
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save
         """
@@ -109,7 +108,7 @@ class AnalyzeCore:
         user_bio = user.bio if user else None
         target_lang = user.target_language if user else "Original"
         
-        hierarchical_context = await rag_service.build_hierarchical_context(note, db)
+        hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
         
         # 2. AI Analysis
         analysis = await ai_service.analyze_text(
@@ -126,7 +125,7 @@ class AnalyzeCore:
         await rag_service.embed_note(note, db)
         
         # 5. Short Term Memory
-        await short_term_memory.add_action(note.user_id, {
+        await memory_service.add_action(note.user_id, {
             "type": "note_analyzed",
             "title": analysis.get("title"),
             "text": f"Analyzed: {analysis.get('title')}"

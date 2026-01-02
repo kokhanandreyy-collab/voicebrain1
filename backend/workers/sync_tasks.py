@@ -74,49 +74,8 @@ async def step_sync_integrations(note: Note, db) -> None:
             db.add(IntegrationLog(integration_id=integration.id, note_id=note.id, status=status, error_message=error))
 
 async def _process_sync_async(note_id: str) -> None:
-    logger.info(f"[Sync] Processing note: {note_id}")
-    db = AsyncSessionLocal()
-    try:
-        result = await db.execute(select(Note).where(Note.id == note_id))
-        note = result.scalars().first()
-        if not note: return
-
-        await step_sync_integrations(note, db)
-        
-        note.status = "COMPLETED"
-        note.processing_step = "Completed"
-        await db.commit()
-
-        # Notifications
-        user_res = await db.execute(select(User).where(User.id == note.user_id))
-        user = user_res.scalars().first()
-        if user:
-            # Telegram
-            if user.telegram_chat_id:
-                from app.core.bot import bot
-                if bot:
-                    try:
-                        safe_title = escape_markdown(note.title or "Untitled")
-                        safe_intent = escape_markdown((note.ai_analysis or {}).get("intent", "note"))
-                        msg = f"✅ **Saved!**\nTitle: {safe_title}\nIntent: {safe_intent}"
-                        await bot.send_message(chat_id=user.telegram_chat_id, text=msg, parse_mode="Markdown")
-                    except Exception as e: logger.warning(f"TG notify failed: {e}")
-
-            # Push
-            if user.push_subscriptions and settings.VAPID_PRIVATE_KEY:
-                from pywebpush import webpush
-                payload = json.dumps({"title": "Note Processed", "body": f"{note.title} analyzed.", "url": f"/dashboard?note={note.id}"})
-                for sub in user.push_subscriptions:
-                    try:
-                        webpush(subscription_info=sub, data=payload, vapid_private_key=settings.VAPID_PRIVATE_KEY, vapid_claims={"sub": settings.VAPID_CLAIMS_EMAIL})
-                    except Exception: pass
-
-    except Exception as e:
-        logger.error(f"Sync task failed: {e}")
-        from workers.common_tasks import handle_note_failure
-        await handle_note_failure(note_id, str(e))
-    finally:
-        await db.close()
+    from app.services.pipeline import pipeline
+    await pipeline.process(note_id)
 
 async def _sync_google_maps_async(note_id: str) -> None:
     async with AsyncSessionLocal() as db:

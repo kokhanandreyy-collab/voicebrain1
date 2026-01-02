@@ -109,54 +109,10 @@ async def step_transcribe(content: bytes) -> Tuple[str, int]:
     return transcription["text"], real_duration_sec
 
 async def _process_transcribe_async(note_id: str) -> None:
-    logger.info(f"[Transcribe] Processing note: {note_id}")
-    db = AsyncSessionLocal()
-    try:
-        result = await db.execute(select(Note).where(Note.id == note_id))
-        note = result.scalars().first()
-        if not note: return
-
-        # 1. Download
-        note.processing_step = "☁️ Uploading..."
-        await db.commit()
-        content = await step_download_audio(note)
-
-        # 2. Optimize
-        note.processing_step = "✂️ Optimizing audio..."
-        await db.commit()
-        content = await step_remove_silence(content)
-
-        # 3. Transcribe
-        note.processing_step = "🎙️ Transcribing audio..."
-        await db.commit()
-        text, duration = await step_transcribe(content)
-        
-        # 4. Update Note & Quota
-        note.transcription_text = text
-        if duration > 0:
-            est = note.duration_seconds or 0
-            note.duration_seconds = duration
-            user_res = await db.execute(select(User).where(User.id == note.user_id))
-            user = user_res.scalars().first()
-            if user:
-                diff = duration - est
-                user.monthly_usage_seconds = max(0, user.monthly_usage_seconds + diff)
-        
-        note.processing_step = "🧠 Extracting action items..."
-        await db.commit()
-        
-        # Trigger Next Stage
-        from workers.analyze_tasks import process_analyze
-        process_analyze.delay(note_id)
-        
-    except Exception as e:
-        logger.error(f"Transcribe task failed for {note_id}: {e}")
-        from workers.common_tasks import handle_note_failure
-        await handle_note_failure(note_id, str(e))
-    finally:
-        await db.close()
+    from app.services.pipeline import pipeline
+    await pipeline.process(note_id)
 
 @celery.task(name="transcribe.process_note")
 def process_transcribe(note_id: str):
     async_to_sync(_process_transcribe_async)(note_id)
-    return {"status": "transcribed", "note_id": note_id}
+    return {"status": "processing_started", "note_id": note_id}

@@ -73,11 +73,24 @@ class User(Base):
     # Web Push
     push_subscriptions = Column(JSON, default=[]) # List of subscriptions
 
+    # Feature Flags
+    feature_flags = Column(JSON, default={"all": True})
+
     # Admin Role
     role = Column(String, default='user') # 'user' or 'admin' 
 
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user")
+
+class NoteRelation(Base):
+    __tablename__ = "note_relations"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    source_note_id = Column(String, ForeignKey("notes.id"), nullable=False)
+    target_note_id = Column(String, ForeignKey("notes.id"), nullable=False)
+    relation_type = Column(String, nullable=False) # caused, related, contradicts
+    confidence = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class NoteStatus:
     PENDING = "PENDING"

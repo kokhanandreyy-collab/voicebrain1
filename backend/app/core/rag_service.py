@@ -25,23 +25,57 @@ class RagService:
             logger.error(f"Embedding failed for note {note.id}: {e}")
 
     async def get_medium_term_context(self, user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
-        """Fetch top 5 similar notes (Medium-Term Memory)."""
+        """Fetch top similar notes via Vector Search + Graph Relations (Medium-Term Memory)."""
         try:
+            from app.models import NoteRelation
+            
+            # 1. Vector Search
             query_vector = await ai_service.generate_embedding(text)
-            result = await db.execute(
+            vector_res = await db.execute(
                 select(Note)
                 .join(NoteEmbedding)
                 .where(Note.user_id == user_id, Note.id != note_id)
                 .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
                 .limit(5)
             )
-            notes = list(result.scalars().all())
+            vector_notes = list(vector_res.scalars().all())
+
+            # 2. Graph Traversal (1-hop)
+            # Find notes related to ANY of the user's top notes? Or just related to CURRENT note?
+            # Current note might be new and have no relations yet.
+            # RAG is used for analysis OF the current note.
+            # So graph traversal isn't helpful for a *new* note which is not in the graph yet.
+            # However, if we are analyzing a note that *was* in the graph or we use vector_notes to find *their* relations (2nd hop)?
+            # "Traversal of graph + cosine".
+            # Typically means: Vector search gives nodes -> Expand graph from those nodes.
+            
+            related_ids = set([n.id for n in vector_notes])
+            if related_ids:
+                graph_res = await db.execute(
+                    select(NoteRelation)
+                    .where(
+                        (NoteRelation.source_note_id.in_(related_ids)) | 
+                        (NoteRelation.target_note_id.in_(related_ids))
+                    )
+                )
+                relations = graph_res.scalars().all()
+                for r in relations:
+                    target = r.target_note_id if r.source_note_id in related_ids else r.source_note_id
+                    related_ids.add(target)
+            
+            # Fetch content for extended graph
+            # Limit total to e.g. 10
+            final_ids = list(related_ids)[:10]
+            if not final_ids:
+                final_notes = []
+            else:
+                nb_res = await db.execute(select(Note).where(Note.id.in_(final_ids)))
+                final_notes = nb_res.scalars().all()
             
             context_parts = []
-            for n in notes:
-                # Mask sensitive or too long content
-                summary_part = n.summary[:300] if n.summary else "No summary"
-                context_parts.append(f"Note: {n.title}\nSummary: {summary_part}")
+            for n in final_notes:
+                summary_part = n.summary[:200] if n.summary else "No summary"
+                context_parts.append(f"Note: {n.title} (Related)\nSummary: {summary_part}")
             
             return "\n".join(context_parts) if context_parts else "No recent related context found."
         except Exception as e:

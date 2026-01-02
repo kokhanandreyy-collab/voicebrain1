@@ -97,6 +97,20 @@ class NotePipeline:
 
     async def _run_sync_stage(self, note: Note, db: AsyncSession):
         logger.info(f"--- Stage 3: Sync ({note.id}) ---")
+        
+        # Check Feature Flags
+        user_res = await db.execute(select(User).where(User.id == note.user_id))
+        user = user_res.scalars().first()
+        flags = user.feature_flags or {} if user else {}
+        
+        if not flags.get("all", True) and not flags.get("sync_enabled", False):
+            logger.info(f"Sync skipped for user {note.user_id} due to feature flags")
+            # We still complete the note to not hang it forever
+            note.status = NoteStatus.COMPLETED
+            note.processing_step = "Sync Skipped (Disabled)"
+            await db.commit()
+            return
+
         note.processing_step = "Syncing..."
         await db.commit()
 

@@ -65,6 +65,38 @@ async def _reflection_summary_async(user_id: str):
             importance_score=8.0 # High priority for reflection
         )
         db.add(new_summary)
+        
+        # 6. Generate Graph Relations
+        try:
+            # We ask AI to identify connection/causality between notes
+            # Simplified: Ask for pairs of Indices that are related
+            relations_prompt = (
+                "Based on the notes provided, identify causal or strong thematic links between them. "
+                "Output ONLY a JSON list of objects: [{'source_title': '...', 'target_title': '...', 'type': 'caused|related'}]. "
+                "No strings attached."
+            )
+            # This is expensive if notes_context is huge.
+            # Assuming small batch or summary context.
+            
+            relations_json = await ai_service.ask_notes_json(notes_context, relations_prompt)
+            # Need to map titles back to IDs.
+            title_to_id = {n.title: n.id for n in notes if n.title}
+            
+            from app.models import NoteRelation
+            for rel in relations_json:
+                s_title = rel.get('source_title')
+                t_title = rel.get('target_title')
+                r_type = rel.get('type', 'related')
+                
+                if s_title in title_to_id and t_title in title_to_id:
+                    s_id = title_to_id[s_title]
+                    t_id = title_to_id[t_title]
+                    if s_id != t_id:
+                        db.add(NoteRelation(source_note_id=s_id, target_note_id=t_id, relation_type=r_type, confidence=0.8))
+        
+        except Exception as e:
+            logger.warning(f"[Reflection] Relation extraction failed: {e}")
+
         await db.commit()
         logger.info(f"[Reflection] Completed and saved for user {user_id}")
 

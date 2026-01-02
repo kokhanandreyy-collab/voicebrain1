@@ -11,7 +11,7 @@ from app.infrastructure.database import AsyncSessionLocal
 from app.core.types import AIAnalysisPack
 
 async def _process_analyze_async(note_id: str) -> None:
-    from app.core.pipeline import pipeline
+    from app.services.pipeline import pipeline
     await pipeline.process(note_id)
 
 @celery.task(name="analyze.process_note")

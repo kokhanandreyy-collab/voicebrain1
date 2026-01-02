@@ -15,7 +15,7 @@ from app.core.audio import audio_processor
 # So I can strip this file to be just a wrapper.
 
 async def _process_transcribe_async(note_id: str) -> None:
-    from app.core.pipeline import pipeline
+    from app.services.pipeline import pipeline
     await pipeline.process(note_id)
 
 @celery.task(name="transcribe.process_note")

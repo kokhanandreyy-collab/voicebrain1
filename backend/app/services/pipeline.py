@@ -8,17 +8,8 @@ from app.infrastructure.database import AsyncSessionLocal
 from app.infrastructure.config import settings
 
 # Core Business Logic
-from app.core.intent_detection import intent_service
+from app.core.analyze_core import analyze_core
 from app.core.audio import audio_processor
-# Sync logic still relies on workers/sync_tasks for now as requested? 
-# "2. Move business logic ... to core/ ... sync_tasks.py logic."
-# "3. In workers — left only Celery wrappers"
-# So sync logic should also be in `core`.
-# I'll create `app/core/sync_service.py` next. 
-# For now, I'll assume it exists or I'll implement `_run_sync_stage` here utilizing `core.sync_service`.
-
-# NOTE: Since I am writing `pipeline.py` NOW, I must assume `app.core.sync_service` exists or will exist.
-# I will implement `app/core/sync_service.py` in the next step.
 
 class NotePipeline:
     async def process(self, note_id: str):
@@ -55,7 +46,10 @@ class NotePipeline:
                 import traceback
                 traceback.print_exc()
                 note.status = NoteStatus.FAILED
-                note.processing_step = f"Error: {str(e)[:50]}"
+                
+                # Try to clean up processing step message
+                error_msg = str(e)[:100].replace('\n', ' ')
+                note.processing_step = f"Error: {error_msg}"
                 await db.commit()
 
     async def _run_transcribe_stage(self, note: Note, db: AsyncSession):
@@ -89,8 +83,8 @@ class NotePipeline:
         user_res = await db.execute(select(User).where(User.id == note.user_id))
         user = user_res.scalars().first()
 
-        # Use Core Intent Service (includes RAG)
-        await intent_service.analyze_note(note, user, db)
+        # Use Core Analyze (includes RAG + Intent)
+        await analyze_core.analyze_step(note, user, db)
         
         note.status = NoteStatus.ANALYZED
         await db.commit()

@@ -5,67 +5,66 @@ from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai_service import ai_service
-from app.models import Note, User, NoteEmbedding, LongTermSummary
+from app.models import Note, User, NoteEmbedding, LongTermSummary, NoteRelation
 from app.core.types import AIAnalysisPack
-from app.utils.redis import short_term_memory
+from app.infrastructure.redis_client import short_term_memory
 
-class AnalyzeCore:
-    async def analyze_step(self, text: str, user_context: Optional[str] = None, target_language: str = "Original", previous_context: Optional[str] = None) -> Dict[str, Any]:
-        """Wrapper for AI analysis."""
-        return await ai_service.analyze_text(text, user_context=user_context, target_language=target_language, previous_context=previous_context)
-
-    async def save_analysis(self, note: Note, analysis: Dict[str, Any], db: AsyncSession) -> None:
-        """Apply analysis results to note and save embedding."""
-        note.title = analysis.get("title", "Untitled Note")
-        note.summary = analysis.get("summary")
-        note.action_items = analysis.get("action_items", [])
-        note.calendar_events = analysis.get("calendar_events", [])
-        note.tags = analysis.get("tags", [])
-        note.diarization = analysis.get("diarization", [])
-        note.mood = analysis.get("mood", "Neutral")
-        note.health_data = analysis.get("health_data")
-        
-        note.ai_analysis = AIAnalysisPack(
-            intent=analysis.get("intent", "note"),
-            suggested_project=analysis.get("suggested_project", "Inbox"),
-            entities=analysis.get("entities", []),
-            priority=analysis.get("priority", 4),
-            notion_properties=analysis.get("notion_properties", {}),
-            explicit_destination_app=analysis.get("explicit_destination_app"),
-            explicit_folder=analysis.get("explicit_folder")
-        )
-        
-        search_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
+class RagService:
+    async def embed_note(self, note: Note, db: AsyncSession) -> None:
+        """Generates embedding for the note and saves it."""
+        text_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
         try:
-            vector = await ai_service.generate_embedding(search_content)
-            # Remove old embedding if exists (one-to-one strictly for now, or update)
-            # Assuming Note has relationship or we just add new row? 
-            # Existing code: note_embedding = NoteEmbedding(note_id=note.id, embedding=vector)
-            # We should probably check existing first if we re-analyze.
-            # For simplicity using existing logic:
-            note_embedding = NoteEmbedding(note_id=note.id, embedding=vector)
-            db.add(note_embedding)
+            vector = await ai_service.generate_embedding(text_content)
+            result = await db.execute(select(NoteEmbedding).where(NoteEmbedding.note_id == note.id))
+            existing = result.scalars().first()
+            if existing:
+                existing.embedding = vector
+            else:
+                db.add(NoteEmbedding(note_id=note.id, embedding=vector))
         except Exception as e:
-            logger.error(f"Embedding failed: {e}")
+            logger.error(f"Embedding failed for note {note.id}: {e}")
 
     async def get_medium_term_context(self, user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
-        """Fetch top 5 similar notes (Medium-Term Memory)."""
+        """Fetch top similar notes via Vector Search + Graph Relations (Medium-Term Memory)."""
         try:
+            # 1. Vector Search
             query_vector = await ai_service.generate_embedding(text)
-            result = await db.execute(
+            vector_res = await db.execute(
                 select(Note)
                 .join(NoteEmbedding)
                 .where(Note.user_id == user_id, Note.id != note_id)
                 .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
                 .limit(5)
             )
-            notes = list(result.scalars().all())
+            vector_notes = list(vector_res.scalars().all())
+
+            # 2. Graph Traversal (1-hop)
+            related_ids = set([n.id for n in vector_notes])
+            if related_ids:
+                graph_res = await db.execute(
+                    select(NoteRelation)
+                    .where(
+                        (NoteRelation.source_note_id.in_(related_ids)) | 
+                        (NoteRelation.target_note_id.in_(related_ids))
+                    )
+                )
+                relations = graph_res.scalars().all()
+                for r in relations:
+                    target = r.target_note_id if r.source_note_id in related_ids else r.source_note_id
+                    related_ids.add(target)
+            
+            # Fetch content for extended graph
+            final_ids = list(related_ids)[:10]
+            if not final_ids:
+                final_notes = []
+            else:
+                nb_res = await db.execute(select(Note).where(Note.id.in_(final_ids)))
+                final_notes = nb_res.scalars().all()
             
             context_parts = []
-            for n in notes:
-                # Mask sensitive or too long content
-                summary_part = n.summary[:300] if n.summary else "No summary"
-                context_parts.append(f"Note: {n.title}\nSummary: {summary_part}")
+            for n in final_notes:
+                summary_part = n.summary[:200] if n.summary else "No summary"
+                context_parts.append(f"Note: {n.title} (Related)\nSummary: {summary_part}")
             
             return "\n".join(context_parts) if context_parts else "No recent related context found."
         except Exception as e:
@@ -89,21 +88,70 @@ class AnalyzeCore:
             return ""
 
     async def build_hierarchical_context(self, note: Note, db: AsyncSession) -> str:
-        """Aggregates Short, Medium, and Long term memory contexts."""
-        # Short-Term
         st_history = await short_term_memory.get_history(note.user_id)
         short_term_str = "\n".join([f"- {item.get('text', str(item))}" for item in st_history]) if st_history else "No recent history."
-
-        # Medium-Term
         medium_term_str = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
-
-        # Long-Term
         long_term_str = await self.get_long_term_memory(note.user_id, db)
-
         return (
             f"Short-term (Last actions):\n{short_term_str}\n\n"
             f"Recent context (Related notes):\n{medium_term_str}\n\n"
             f"Long-term knowledge (General themes):\n{long_term_str}"
+        )
+
+rag_service = RagService()
+
+class AnalyzeCore:
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession) -> Dict[str, Any]:
+        """
+        Orchestrates the analysis: RAG Context -> AI Analysis -> Save
+        """
+        # 1. Context
+        user_bio = user.bio if user else None
+        target_lang = user.target_language if user else "Original"
+        
+        hierarchical_context = await rag_service.build_hierarchical_context(note, db)
+        
+        # 2. AI Analysis
+        analysis = await ai_service.analyze_text(
+            note.transcription_text,
+            user_context=user_bio,
+            target_language=target_lang,
+            previous_context=hierarchical_context
+        )
+        
+        # 3. Apply results
+        self._apply_analysis_to_note(note, analysis)
+        
+        # 4. Embed
+        await rag_service.embed_note(note, db)
+        
+        # 5. Short Term Memory
+        await short_term_memory.add_action(note.user_id, {
+            "type": "note_analyzed",
+            "title": analysis.get("title"),
+            "text": f"Analyzed: {analysis.get('title')}"
+        })
+        
+        return analysis
+
+    def _apply_analysis_to_note(self, note: Note, analysis: Dict[str, Any]):
+        note.title = analysis.get("title", "Untitled Note")
+        note.summary = analysis.get("summary")
+        note.action_items = analysis.get("action_items", [])
+        note.calendar_events = analysis.get("calendar_events", [])
+        note.tags = analysis.get("tags", [])
+        note.diarization = analysis.get("diarization", [])
+        note.mood = analysis.get("mood", "Neutral")
+        note.health_data = analysis.get("health_data")
+        
+        note.ai_analysis = AIAnalysisPack(
+            intent=analysis.get("intent", "note"),
+            suggested_project=analysis.get("suggested_project", "Inbox"),
+            entities=analysis.get("entities", []),
+            priority=analysis.get("priority", 4),
+            notion_properties=analysis.get("notion_properties", {}),
+            explicit_destination_app=analysis.get("explicit_destination_app"),
+            explicit_folder=analysis.get("explicit_folder")
         )
 
 analyze_core = AnalyzeCore()

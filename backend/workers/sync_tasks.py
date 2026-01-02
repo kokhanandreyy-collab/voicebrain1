@@ -4,7 +4,7 @@ from app.infrastructure.database import AsyncSessionLocal
 from app.core.sync_service import sync_service
 
 async def _process_sync_async(note_id: str) -> None:
-    from app.core.pipeline import pipeline
+    from app.services.pipeline import pipeline
     await pipeline.process(note_id)
 
 @celery.task(name="sync.process_note")

@@ -105,7 +105,7 @@ class RagService:
                  )
                  candidates = result.scalars().all()
                  # Strict Re-ranking: Priority = Score (desc) -> Date (desc)
-                 candidates.sort(key=lambda x: (x.importance_score or 0, x.created_at), reverse=True)
+                 candidates.sort(key=lambda x: (getattr(x, 'importance_score', 0), x.created_at), reverse=True)
                  final = candidates[:5]
             else:
                   result = await db.execute(

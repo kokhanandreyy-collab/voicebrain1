@@ -118,6 +118,7 @@ class Note(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_favorite = Column(Boolean, default=False)
+    importance_score = Column(Float, default=5.0)
     
     # New Metadata
     action_items = Column(JSON, default=[])

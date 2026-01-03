@@ -56,12 +56,8 @@ celery.conf.beat_schedule = {
         "task": "reflection.trigger_daily",
         "schedule": crontab(hour=1, minute=0), # Run at 1:00 AM
     },
-    "memory-cleanup-weekly": {
+    "cleanup-memory-weekly": {
         "task": "cleanup_memory",
-        "schedule": crontab(hour=3, minute=0, day_of_week=0), # Sunday 3:00 AM
+        "schedule": crontab(hour=3, minute=0),
     },
-    "cleanup-memory-every-7-days": {
-        "task": "cleanup_memory",
-        "schedule": crontab(minute=0, hour=3, day_of_week='*'), # Daily at 3 AM as per specific requirement (or weekly)
-    }
 }

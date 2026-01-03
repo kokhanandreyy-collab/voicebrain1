@@ -6,12 +6,12 @@ from typing import List
 
 from infrastructure.database import get_db
 from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
-from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote
+from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote, ReplyRequest
 from pydantic import BaseModel
 from app.services.ai_service import ai_service
 from app.api.dependencies import get_current_user
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi_limiter.depends import RateLimiter
 from infrastructure.config import settings
 
@@ -580,3 +580,50 @@ async def edit_note(
     await db.commit()
     await db.refresh(note)
     return note
+
+@router.post("/{note_id}/reply", response_model=NoteResponse)
+async def reply_to_clarification(
+    note_id: str,
+    req: ReplyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Handle user's reply to an 'ask_clarification' question of a specific note.
+    Creates a new note with context questioning and answering.
+    """
+    # 1. Fetch original note to get context
+    result = await db.execute(select(Note).where(Note.id == note_id, Note.user_id == current_user.id))
+    original_note = result.scalars().first()
+    if not original_note:
+        raise HTTPException(status_code=404, detail="Original note not found")
+
+    # 2. Find the question in action items
+    question = "AI uncertainty"
+    if original_note.action_items:
+        for item in original_note.action_items:
+            if "Clarification Needed:" in str(item):
+                question = str(item).replace("Clarification Needed:", "").strip()
+                break
+
+    # 3. Create a composite text for the new note
+    composed_text = f"Question: {question}\nAnswer: {req.answer}"
+
+    new_note = Note(
+        user_id=current_user.id,
+        title=f"Reply: {original_note.title or 'Note'}",
+        status="PROCESSING",
+        transcription_text=composed_text,
+        is_audio_note=False,
+        summary="Processing your clarification...",
+        processing_step="🧠 Training AI..."
+    )
+    db.add(new_note)
+    await db.commit()
+    await db.refresh(new_note)
+
+    # 4. Trigger Analysis
+    from workers.analyze_tasks import process_analyze
+    process_analyze.delay(new_note.id)
+
+    return new_note

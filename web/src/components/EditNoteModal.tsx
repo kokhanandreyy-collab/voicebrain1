@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Save, Sparkles, Heart } from 'lucide-react';
 import { Note, RelatedNote } from '../types';
 import api from '../api';
+import { ClarificationBubble } from './ClarificationBubble';
 
 interface EditNoteModalProps {
     isOpen: boolean;
@@ -106,6 +107,14 @@ export function EditNoteModal({ isOpen, onClose, note, onSave, onSelectRelated }
                             </div>
                             <p className="text-xs text-slate-400">Editing re-calculates the AI embeddings for search.</p>
                         </div>
+
+                        {/* Adaptive Learning Clarification */}
+                        {note.action_items?.some(item => item.startsWith("Clarification Needed:")) && (
+                            <ClarificationBubble
+                                noteId={note.id}
+                                question={note.action_items.find(i => i.startsWith("Clarification Needed:"))?.replace("Clarification Needed:", "").trim() || ""}
+                            />
+                        )}
                     </div>
 
 

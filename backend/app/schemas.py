@@ -138,3 +138,6 @@ class RelatedNote(BaseModel):
     summary: Optional[str] = None
     created_at: datetime
     similarity: float
+
+class ReplyRequest(BaseModel):
+    answer: str

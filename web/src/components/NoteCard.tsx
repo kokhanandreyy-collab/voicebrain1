@@ -16,6 +16,8 @@ interface NoteCardProps {
     onSelect?: () => void;
 }
 
+import { ClarificationBubble } from './ClarificationBubble';
+
 export function NoteCard({ note, onEdit, onDelete, onShare, onStatusBadge, selectable, selected, onSelect }: NoteCardProps) {
     const [isTranscriptView, setIsTranscriptView] = useState(false);
     const x = useMotionValue(0);
@@ -157,6 +159,14 @@ export function NoteCard({ note, onEdit, onDelete, onShare, onStatusBadge, selec
                                 </div>
                             </div>
                         </div>
+
+                        {/* Clarification Needed UI */}
+                        {note.action_items?.some(item => item.startsWith("Clarification Needed:")) && (
+                            <ClarificationBubble
+                                noteId={note.id}
+                                question={note.action_items.find(i => i.startsWith("Clarification Needed:"))?.replace("Clarification Needed:", "").trim() || ""}
+                            />
+                        )}
 
                         {/* Progressive Rendering for Transcript */}
                         {(note.status === 'PROCESSING' || note.status === 'PENDING') && note.transcription_text && (

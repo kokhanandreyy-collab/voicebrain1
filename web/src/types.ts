@@ -37,6 +37,7 @@ export interface Note {
     };
     ai_analysis?: any;
     integration_status?: IntegrationStatus[];
+    ask_clarification?: string;
 }
 
 export interface User {

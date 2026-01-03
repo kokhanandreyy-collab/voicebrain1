@@ -132,6 +132,19 @@ class AnalyzeCore:
         # 3. Apply results
         self._apply_analysis_to_note(note, analysis)
         
+        # 3.1 Adaptive Learning: Process Identity Update
+        identity_update = analysis.get("identity_update")
+        if identity_update and user:
+            logger.info(f"Adaptive Learning: Updating identity for user {user.id}")
+            current_id = user.identity_summary or ""
+            # Simple append (a smarter way would be to create a 'Memory' object or structured Profile update)
+            # For now, we append it so the next context injects it.
+            user.identity_summary = (current_id + f"\n- {identity_update}").strip()
+            # Note: Commit happens in pipeline caller usually, but pipeline commits after _run_analyze_stage. 
+            # We are passing 'user' object which is attached to session if loaded correctly.
+            # Pipeline loads user via: user_res.scalars().first().
+            # So `user` is attached to `db` session. Committing in pipeline will save this.
+        
         # 4. Embed
         await rag_service.embed_note(note, db)
         

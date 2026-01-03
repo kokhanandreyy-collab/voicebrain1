@@ -199,7 +199,8 @@ class AIService:
                 "12. 'priority': Integer from 1 (High/Urgent) to 4 (Low/Someday).\n"
                 "13. 'notion_properties': A JSON object guessing properties for a Notion database entry (e.g. {'Status': 'In Progress', 'Category': 'Research'}).\n"
                 "14. 'explicit_destination_app': Detect if the user explicitly specifies a destination in the voice command. One of ['todoist', 'notion', 'slack', 'google_calendar', 'google_drive', 'dropbox', 'email'] or null if none mentioned.\n"
-                "15. 'explicit_folder': Extract the specific folder, project, or database name mentioned (e.g., 'Work', 'Journal', 'Home') or null.\n\n"
+                "15. 'explicit_folder': Extract the specific folder, project, or database name mentioned (e.g., 'Work', 'Journal', 'Home') or null.\n"
+                "16. 'identity_update': If the user explicitly states a preference, corrects a memory, or defines a term (e.g. 'P0 is critical', 'I am vegan', 'My dog is Rex'), extract it here. Otherwise null.\n\n"
                 "CRITICAL: The 'summary' and 'action_items' fields must NOT contain the routing command itself (e.g., 'send this to Todoist', 'put this in my work project'). Clean the text by removing these instructions."
             )
             

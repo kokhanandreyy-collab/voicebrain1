@@ -198,9 +198,19 @@ async def _cleanup_memory_async() -> None:
         for m in mems_to_del:
             await db.delete(m)
             c_mems += 1
+
+        # 3. Prune Weak Relations (Strength < 0.3)
+        from app.models import NoteRelation
+        res_rel = await db.execute(select(NoteRelation).where(NoteRelation.strength < 0.3))
+        rels_to_del = res_rel.scalars().all()
+        
+        c_rels = 0
+        for r in rels_to_del:
+            await db.delete(r)
+            c_rels += 1
             
         await db.commit()
-        logger.info(f"Memory Cleanup: Deleted {c_notes} Notes and {c_mems} LTM entries.")
+        logger.info(f"Memory Cleanup: Deleted {c_notes} Notes, {c_mems} LTM entries, {c_rels} Weak Relations.")
     except Exception as e:
         logger.error(f"Cleanup Memory Error: {e}")
     finally:

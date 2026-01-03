@@ -426,6 +426,54 @@ class AIService:
             logger.error(f"Embedding Error: {e}")
             return [0.0] * 1536
 
+    async def ask_notes_stream(self, context: str, question: str, user_context: Optional[str] = None):
+        """
+        Answer a user question based on the provided note context (Streaming).
+        """
+        if not self.client:
+            yield "Reference Answer (Streaming): Mock."
+            return
+
+        try:
+            default_prompt: str = (
+                "You are VoiceBrain, a helpful AI assistant. "
+                "Answer the user's question using ONLY the provided context from their notes. "
+                "If the answer is not in the context, say 'I couldn't find that information in your notes.' "
+                "Keep answers concise and friendly.\n"
+                "At the end of the answer, strictly list the titles of the notes you used as sources in a section titled '**Sources:**'."
+            )
+            
+            system_prompt: str = await self.get_system_prompt("ask_notes", default_prompt)
+            if user_context:
+                system_prompt = f"User Background & Preferences:\n{user_context}\n\n{system_prompt}"
+            
+            user_content: str = f"Context:\n{context}\n\nQuestion: {question}"
+
+            deepseek_key: Optional[str] = settings.DEEPSEEK_API_KEY
+            if deepseek_key:
+                client = AsyncOpenAI(api_key=deepseek_key, base_url=settings.DEEPSEEK_BASE_URL)
+                model = "deepseek-chat"
+            else:
+                client = self.client
+                model = "gpt-4o-mini"
+
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.3,
+                max_tokens=600,
+                stream=True
+            )
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            logger.error(f"Ask AI Streaming Error: {e}")
+            yield "Sorry, I encountered an error while analyzing your notes."
+
     async def ask_notes(self, context: str, question: str, user_context: Optional[str] = None) -> str:
         """
         Answer a user question based on the provided note context.

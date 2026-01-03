@@ -49,14 +49,25 @@ class VoiceBrainAPIClient:
         resp = await self._request("POST", "/notes/ask", json={"question": question})
         return AskResponse(**resp.json())
 
+    async def ask_ai_stream(self, question: str):
+        url = f"{self.base_url}/notes/ask/stream"
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            
+        async with self.client.stream("POST", url, json={"question": question}, headers=headers) as response:
+            async for chunk in response.aiter_text():
+                yield chunk
+
     async def upload_voice(self, files: Dict[str, Any]) -> Dict[str, Any]:
         resp = await self._request("POST", "/notes/upload", files=files)
         return resp.json()
     
-    async def upload_text_note(self, text: str) -> Dict[str, Any]:
-        # Utilizing the same /upload logic if backend supports JSON or multi-part text
-        # Currently backend prefers files, but we can send transcription_text directly if supported
-        resp = await self._request("POST", "/notes/upload", json={"transcription_text": text})
+    async def upload_text_note(self, text: str, title: Optional[str] = None) -> Dict[str, Any]:
+        resp = await self._request("POST", "/notes/create-text", json={
+            "transcription_text": text,
+            "title": title
+        })
         return resp.json()
 
     async def reply_to_clarification(self, note_id: str, answer: str) -> Dict[str, Any]:

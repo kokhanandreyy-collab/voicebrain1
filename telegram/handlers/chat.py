@@ -47,6 +47,7 @@ async def cmd_help(message: types.Message):
 @router.message(Command("ask"))
 async def cmd_ask(message: types.Message, command: CommandObject):
     from telegram.bot import get_client
+    from telegram.utils.formatting import escape_md
     
     client = get_client(message.chat.id)
     if not client.api_key:
@@ -59,37 +60,41 @@ async def cmd_ask(message: types.Message, command: CommandObject):
 
     query = command.args
     await message.bot.send_chat_action(message.chat.id, "typing")
+    
+    # Send initial message
+    status_msg = await message.answer("🤖 *AI Answer:* \n\n_", parse_mode="MarkdownV2")
+    full_answer = ""
+    chunk_count = 0
 
     try:
-        data = await client.ask_ai(query)
-        answer = data.answer
-        clarification = data.ask_clarification
-        note_id = data.note_id
-
-        text = f"🤖 *AI Answer:*\n\n{escape_md(answer)}"
-        
-        builder = InlineKeyboardBuilder()
-        if note_id:
-            builder.button(text="👁️ View Details", callback_data=f"view_note:{note_id}")
-        
-        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
-
-        # If there's a clarification, send it as a separate highlighted message
-        if clarification:
-            from telegram.utils.formatting import format_clarification_block
-            clarify_text = format_clarification_block(clarification)
+        async for chunk in client.ask_ai_stream(query):
+            full_answer += chunk
+            chunk_count += 1
             
-            clarify_builder = InlineKeyboardBuilder()
-            clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id or 'none'}")
-            
-            await message.answer(
-                clarify_text, 
-                reply_markup=clarify_builder.as_markup(), 
-                parse_mode="MarkdownV2"
-            )
+            # Update message every 10 chunks to avoid rate limiting
+            if chunk_count % 10 == 0:
+                try:
+                    await status_msg.edit_text(
+                        f"🤖 *AI Answer:*\n\n{escape_md(full_answer)}\|",
+                        parse_mode="MarkdownV2"
+                    )
+                except Exception:
+                    pass # Ignore 'message not modified' or similar errors
+
+        # Final edit
+        await status_msg.edit_text(
+            f"🤖 *AI Answer:*\n\n{escape_md(full_answer)}",
+            parse_mode="MarkdownV2"
+        )
+        
+        # Note: In a real scenario, we might want to check for clarifications too.
+        # Since streaming endpoint currently only yields text, we might need 
+        # a final JSON chunk or a separate call to find clarifications if needed.
+        # For parity, we'll keep it simple for now or fetch clarifications separately.
+        
     except Exception as e:
-        logger.error(f"Ask AI Error: {e}")
-        await message.answer("❌ Failed to connect to VoiceBrain API.")
+        logger.error(f"Ask AI Streaming Error: {e}")
+        await status_msg.edit_text("❌ Failed to get a response from VoiceBrain.")
     finally:
         await client.close()
 

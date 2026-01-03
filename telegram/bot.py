@@ -61,6 +61,10 @@ def get_client(chat_id: int) -> VoiceBrainAPIClient:
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+# Register Middleware
+from telegram.middleware import ThrottlingMiddleware
+dp.message.middleware(ThrottlingMiddleware(slow_mode_delay=1.0))
+
 async def main():
     if not TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN not found in environment variables!")

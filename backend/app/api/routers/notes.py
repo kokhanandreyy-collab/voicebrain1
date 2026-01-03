@@ -188,6 +188,33 @@ async def upload_note(
 
     return new_note
 
+@router.post("/create-text", response_model=NoteResponse)
+async def create_text_note(
+    req: NoteCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Directly create a text-based note.
+    Useful for Telegram Bot or Quick Text on Web.
+    """
+    new_note = Note(
+        user_id=current_user.id,
+        title=req.title or "New Text Note",
+        transcription_text=req.transcription_text,
+        status="PENDING",
+        audio_url="" # No audio for text notes
+    )
+    db.add(new_note)
+    await db.commit()
+    await db.refresh(new_note)
+    
+    # Trigger Analysis immediately (skip transcription)
+    from workers.analyze_tasks import process_analyze
+    process_analyze.delay(new_note.id)
+    
+    return new_note
+
 async def attach_integration_status(db: AsyncSession, notes: List[Note]):
     if not notes:
         return
@@ -250,14 +277,7 @@ async def ask_ai(
     semantic_notes = result_sem.scalars().all()
     
     # 2.2 Keyword Search (SQL ILIKE)
-    # Simple keyword match on title or content
-    # In a real system, you'd extract keywords from the question first.
-    # Here we perform a loose match if the query is not too long to be helpful, 
-    # or just match on specific terms if we had a keyword extractor.
-    # For now, we search for the full phrase or fall back to semantic only if string is too generic.
-    
     keyword_notes = []
-    # Only try keyword search if it looks like a keyword query (short-ish) or specific phrase
     if len(req.question.split()) < 10:
          query_kw = select(Note).where(
              Note.user_id == current_user.id,
@@ -270,10 +290,10 @@ async def ask_ai(
          result_kw = await db.execute(query_kw)
          keyword_notes = result_kw.scalars().all()
 
-    # 2.3 Combine & Deduplicate (Rank Fusion - naive)
+    # 2.3 Combine & Deduplicate
     combined_notes_map = {n.id: n for n in semantic_notes}
     for n in keyword_notes:
-        combined_notes_map[n.id] = n # Overwrite/Add
+        combined_notes_map[n.id] = n
         
     relevant_notes = list(combined_notes_map.values())
     
@@ -291,13 +311,11 @@ async def ask_ai(
     answer = await ai_service.ask_notes(context_text, req.question, user_context=user_context)
     
     # 5. Adaptive Memory Injection
-    # Check if the most relevant note has a pending clarification that we can surface
     ask_clarification = None
     note_id = None
     
     if relevant_notes:
         note_id = relevant_notes[0].id
-        # Looking for existing clarification in action items
         for item in (relevant_notes[0].action_items or []):
             if str(item).startswith("Clarification Needed:"):
                 ask_clarification = str(item).replace("Clarification Needed:", "").strip()
@@ -308,6 +326,34 @@ async def ask_ai(
         "ask_clarification": ask_clarification,
         "note_id": note_id
     }
+
+from fastapi.responses import StreamingResponse
+
+@router.post("/ask/stream", dependencies=[Depends(RateLimiter(times=20, seconds=3600))])
+async def ask_ai_stream(
+    req: AskRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Reuse RAG logic
+    question_embedding = await ai_service.generate_embedding(req.question)
+    query_sem = select(Note).where(Note.user_id == current_user.id)
+    query_sem = query_sem.order_by(Note.embedding.cosine_distance(question_embedding)).limit(10)
+    result_sem = await db.execute(query_sem)
+    relevant_notes = result_sem.scalars().all()
+
+    if not relevant_notes:
+        async def empty_gen():
+            yield "You don't have any notes yet."
+        return StreamingResponse(empty_gen(), media_type="text/plain")
+
+    context_text = "\n\n".join([f"Note Title: {n.title}\n{n.summary or n.transcription_text[:500]}..." for n in relevant_notes])
+    user_context = f"Identity: {current_user.identity_summary}\nPreferences: {json.dumps(current_user.adaptive_preferences or {})}"
+
+    return StreamingResponse(
+        ai_service.ask_notes_stream(context_text, req.question, user_context=user_context),
+        media_type="text/event-stream"
+    )
     
 
 

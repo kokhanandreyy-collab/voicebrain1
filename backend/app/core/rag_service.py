@@ -24,8 +24,8 @@ class RagService:
         except Exception as e:
             logger.error(f"Embedding failed for note {note.id}: {e}")
 
-    async def get_medium_term_context(self, user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
-        """Fetch top similar notes via Vector Search + Graph Relations (Medium-Term Memory)."""
+    async def get_medium_term_context(self, user_id: str, note_id: str, text: str, db: AsyncSession) -> dict:
+        """Fetch similar notes via Vector Search + Graph Relations (Medium-Term Memory)."""
         try:
             from app.models import NoteRelation
             
@@ -41,9 +41,8 @@ class RagService:
             vector_notes = list(vector_res.scalars().all())
 
             # 2. Graph Traversal (1-hop)
-            # Find neighbors for the 5 vector notes, prioritize by strength
             vector_ids = set([n.id for n in vector_notes])
-            related_notes_map = {n.id: n for n in vector_notes}
+            graph_notes = []
             
             if vector_ids:
                 graph_res = await db.execute(
@@ -55,34 +54,42 @@ class RagService:
                     .order_by(desc(NoteRelation.strength))
                 )
                 relations = graph_res.scalars().all()
+                logger.info(f"Graph traversal: found {len(relations)} connections")
                 
                 neighbor_ids = []
+                # tracked to avoid duplicates with vector_notes
+                known_ids = vector_ids.copy()
+                
                 for r in relations:
                     target = r.note_id2 if r.note_id1 in vector_ids else r.note_id1
-                    if target not in related_notes_map:
+                    if target not in known_ids:
                         neighbor_ids.append(target)
+                        known_ids.add(target)
                         if len(neighbor_ids) >= 5: # top_k=5 by strength desc
                             break
                             
                 if neighbor_ids:
                     nb_notes_res = await db.execute(select(Note).where(Note.id.in_(neighbor_ids)))
-                    neighbor_notes = nb_notes_res.scalars().all()
-                    for n in neighbor_notes:
-                        related_notes_map[n.id] = n
+                    graph_notes = list(nb_notes_res.scalars().all())
             
-            # Build context from unique collected notes
-            final_notes = list(related_notes_map.values())[:10]
+            # Formatting
+            v_parts = []
+            for n in vector_notes:
+                summary = n.summary[:200] if n.summary else "No summary"
+                v_parts.append(f"Note: {n.title}\nSummary: {summary}")
             
-            context_parts = []
-            for n in final_notes:
-                summary_part = n.summary[:200] if n.summary else "No summary"
-                note_type = "Vector Match" if n.id in vector_ids else "Graph Neighbor"
-                context_parts.append(f"Note: {n.title} ({note_type})\nSummary: {summary_part}")
-            
-            return "\n".join(context_parts) if context_parts else "No recent related context found."
+            g_parts = []
+            for n in graph_notes:
+                summary = n.summary[:200] if n.summary else "No summary"
+                g_parts.append(f"Related note: {summary}")
+
+            return {
+                "vector": "\n".join(v_parts) if v_parts else "No similar notes found.",
+                "graph": "\n".join(g_parts) if g_parts else "No related graph connections found."
+            }
         except Exception as e:
             logger.error(f"Medium-Term retrieval failed: {e}")
-            return ""
+            return {"vector": "", "graph": ""}
 
     async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
         """Fetch top long-term memories. Prioritize high importance, then relevance + date."""
@@ -136,8 +143,9 @@ class RagService:
         if not short_term: short_term = "No recent notes."
 
         # 2. Medium Term (RAG + Graph)
-        medium_term = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
-        if not medium_term: medium_term = "No related notes found."
+        mt_data = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
+        vector_context = mt_data["vector"]
+        graph_context = mt_data["graph"]
 
         # 3. Long Term (Top 3 Importance + Relevance)
         long_term = await self.get_long_term_memory(note.user_id, db, query_text=note.transcription_text)
@@ -145,7 +153,8 @@ class RagService:
 
         return (
             f"Short-term context (Recent 10 notes):\n{short_term}\n\n"
-            f"Recent context (Similar notes):\n{medium_term}\n\n"
+            f"Recent context (Similar notes):\n{vector_context}\n\n"
+            f"Graph connections:\n{graph_context}\n\n"
             f"Long-term knowledge (Key memories):\n{long_term}"
         )
 

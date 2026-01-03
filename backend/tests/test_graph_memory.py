@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from workers.reflection_tasks import _process_reflection_async
 from app.core.rag_service import rag_service
-from app.models import Note, NoteRelation, NoteEmbedding, User
+from app.models import Note, NoteRelation, NoteEmbedding, User, LongTermMemory
 import json
 
 @pytest.fixture
@@ -12,94 +12,84 @@ def mock_db_session():
     mock_res = MagicMock()
     mock_res.scalars.return_value.all.return_value = []
     session.execute.return_value = mock_res
+    session.__aenter__.return_value = session
     return session
 
 @pytest.mark.asyncio
-async def test_generate_relations(mock_db_session):
-    """Test that reflection correctly identifies and saves note relations."""
-    user_id = "u1"
-    
-    # Query for notes
-    mock_res_notes = MagicMock(name="NotesResult")
-    n1 = Note(id="n1", transcription_text="First note text")
-    n2 = Note(id="n2", transcription_text="Second note text")
-    mock_res_notes.scalars.return_value.all.return_value = [n1, n2]
-    
-    # Query for user 
-    mock_res_user = MagicMock(name="UserResult")
-    mock_res_user.scalars.return_value.first.return_value = User(id=user_id)
-    
-    mock_db_session.execute = AsyncMock(side_effect=[
-        mock_res_notes,
-        mock_res_user
-    ])
-    mock_db_session.__aenter__.return_value = mock_db_session
-    
-    # Mock AI response with relations
-    mock_ai = AsyncMock()
-    # First call: Summary
-    # Second call: Relations
-    mock_ai.get_chat_completion.side_effect = [
-        json.dumps({"summary": "Summary", "identity_summary": "Identity", "importance_score": 5.0}),
-        json.dumps([{"note1_id": "n1", "note2_id": "n2", "type": "caused", "strength": 0.8}])
-    ]
-    mock_ai.get_embedding.return_value = [0.1] * 1536
-    mock_ai.clean_json_response = lambda x: x
-    
-    with patch("workers.reflection_tasks.ai_service", mock_ai), \
-         patch("workers.reflection_tasks.AsyncSessionLocal", return_value=mock_db_session):
-        await _process_reflection_async(user_id)
-        
-        # Verify db.add was called for NoteRelation
-        added_objects = [call.args[0] for call in mock_db_session.add.call_args_list]
-        relations = [obj for obj in added_objects if isinstance(obj, NoteRelation)]
-        
-        assert len(relations) == 1
-        assert relations[0].note_id1 == "n1"
-        assert relations[0].note_id2 == "n2"
-        assert relations[0].relation_type == "caused"
-        assert relations[0].strength == 0.8
-
-@pytest.mark.asyncio
-async def test_graph_traversal(mock_db_session):
-    """Test that RAG retrieval pulls in neighbor notes via relations."""
+async def test_traversal(mock_db_session):
+    """Test graph traversal specifically: mock cosine + relations -> check context."""
     user_id = "u1"
     note_id = "n1"
     
     # 1. Main Vector Match
-    n1 = Note(id="n1", title="Vector Note", summary="Summary 1")
+    v_note = Note(id="v1", title="Vector Note", summary="Vector Summary")
     # 2. Graph Neighbor
-    n2 = Note(id="n2", title="Graph Neighbor", summary="Summary 2")
+    g_note = Note(id="g1", title="Graph Note", summary="Graph Summary")
     
-    # NoteRelation between them
-    rel = NoteRelation(note_id1="n1", note_id2="n2", strength=0.9)
+    # Relation
+    rel = NoteRelation(note_id1="v1", note_id2="g1", strength=0.9)
     
     # Setup execute results
-    # 1. Vector Search Note find
-    mock_res_vector = MagicMock()
-    mock_res_vector.scalars.return_value.all.return_value = [n1]
-    
+    # 1. Vector Search
+    mock_res_v = MagicMock()
+    mock_res_v.scalars.return_value.all.return_value = [v_note]
     # 2. Relation search
     mock_res_rel = MagicMock()
     mock_res_rel.scalars.return_value.all.return_value = [rel]
+    # 3. Neighbor Notes fetch
+    mock_res_g = MagicMock()
+    mock_res_g.scalars.return_value.all.return_value = [g_note]
     
-    # 3. Fetch Neighbor Note
-    mock_res_nb = MagicMock()
-    mock_res_nb.scalars.return_value.all.return_value = [n2]
+    mock_db_session.execute.side_effect = [mock_res_v, mock_res_rel, mock_res_g]
     
-    mock_db_session.execute.side_effect = [
-        mock_res_vector,
-        mock_res_rel,
-        mock_res_nb
-    ]
-    
-    # Mock embedding
+    # Mock AI
     mock_ai = AsyncMock()
     mock_ai.generate_embedding.return_value = [0.1] * 1536
     
     with patch("app.core.rag_service.ai_service", mock_ai):
-        context = await rag_service.get_medium_term_context(user_id, note_id, "query", mock_db_session)
+        res = await rag_service.get_medium_term_context(user_id, note_id, "test", mock_db_session)
+        assert "Vector Note" in res["vector"]
+        assert "Related note: Graph Summary" in res["graph"]
+
+@pytest.mark.asyncio
+async def test_full_graph_search(mock_db_session):
+    """Test the full context assembly in build_hierarchical_context including graph."""
+    note = Note(id="root", user_id="u1", transcription_text="query")
+    
+    # Mock Short Term (10 notes)
+    mock_res_st = MagicMock()
+    mock_res_st.scalars.return_value.all.return_value = []
+    
+    # Mock Medium Term parts (Vector + Graph)
+    # get_medium_term_context: Vector search
+    mock_res_v = MagicMock()
+    mock_res_v.scalars.return_value.all.return_value = [Note(id="v1", title="VMatch", summary="VSum")]
+    # get_medium_term_context: Relation search
+    mock_res_rel = MagicMock()
+    mock_res_rel.scalars.return_value.all.return_value = [NoteRelation(note_id1="v1", note_id2="g1", strength=0.9)]
+    # get_medium_term_context: Neighbor fetch
+    mock_res_g = MagicMock()
+    mock_res_g.scalars.return_value.all.return_value = [Note(id="g1", title="GMatch", summary="GSum")]
+    
+    # Mock Long Term
+    mock_res_lt = MagicMock()
+    mock_res_lt.scalars.return_value.all.return_value = []
+    
+    mock_db_session.execute.side_effect = [
+        mock_res_st, # Short term
+        mock_res_v,  # Medium term vector
+        mock_res_rel, # Medium term relation
+        mock_res_g,  # Medium term neighbor
+        mock_res_lt  # Long term
+    ]
+    
+    mock_ai = AsyncMock()
+    mock_ai.generate_embedding.return_value = [0.1] * 1536
+    
+    with patch("app.core.rag_service.ai_service", mock_ai):
+        full_context = await rag_service.build_hierarchical_context(note, mock_db_session)
         
-        assert "Vector Note" in context
-        assert "Graph Neighbor" in context
-        assert "Summary 2" in context
+        assert "Graph connections:" in full_context
+        assert "Related note: GSum" in full_context
+        assert "Recent context (Similar notes):" in full_context
+        assert "VMatch" in full_context

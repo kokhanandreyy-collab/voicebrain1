@@ -79,35 +79,43 @@ async def _process_reflection_async(user_id: str):
              
              # 6. Graph Relations (New)
              try:
-                 # Minimal prompt for relations
+                 # Specific prompt as requested
                  rel_prompt = (
-                     "Analyze these notes specifically for causal or semantic connections. "
-                     "Return JSON: { 'relations': [ { 'id1': 'note_id', 'id2': 'note_id', 'type': 'caused/related/contradicted', 'strength': 0.0-1.0 } ] } "
-                     "Only output strong connections (>0.6)."
-                     f"\nNotes JSON with IDs:\n"
+                     "На основе этих заметок сгенерируй связи между ними в формате JSON list: "
+                     "[{'note1_id': str, 'note2_id': str, 'type': str, 'strength': float}]. "
+                     "Используй ID заметок, предоставленные ниже."
+                     f"\n\nЗаметки:\n"
                  )
-                 notes_json = json.dumps([{"id": n.id, "text": n.transcription_text[:200]} for n in notes])
-                 rel_prompt += notes_json
+                 # Note: My IDs are String/UUID, so I told DeepSeek to use str, but matching the format requested
+                 notes_data = [{"id": n.id, "text": n.transcription_text[:200]} for n in notes]
+                 rel_prompt += json.dumps(notes_data, ensure_ascii=False)
                  
                  rel_resp = await ai_service.get_chat_completion([
-                     {"role": "system", "content": "You are a graph database agent. Return ONLY JSON."},
+                     {"role": "system", "content": "You are a graph database agent. Return ONLY JSON list."},
                      {"role": "user", "content": rel_prompt}
                  ])
-                 rel_data = json.loads(ai_service.clean_json_response(rel_resp))
-                 relations = rel_data.get("relations", [])
+                 
+                 # The user might return just the list or a dict with 'relations'
+                 raw_data = json.loads(ai_service.clean_json_response(rel_resp))
+                 relations = raw_data if isinstance(raw_data, list) else raw_data.get("relations", [])
                  
                  from app.models import NoteRelation
                  for r in relations:
-                     # Validate IDs exist in our set to avoid FK errors (though they should)
-                     # Add to DB
-                     nr = NoteRelation(
-                         note_id1=r['id1'],
-                         note_id2=r['id2'],
-                         relation_type=r['type'],
-                         strength=r['strength']
-                     )
-                     db.add(nr)
+                     # Map keys from the specific prompt request
+                     n1 = r.get('note1_id') or r.get('id1')
+                     n2 = r.get('note2_id') or r.get('id2')
+                     r_type = r.get('type') or r.get('relation_type', 'related')
+                     r_strength = float(r.get('strength', 1.0))
                      
+                     if n1 and n2:
+                         nr = NoteRelation(
+                             note_id1=n1,
+                             note_id2=n2,
+                             relation_type=r_type,
+                             strength=r_strength
+                         )
+                         db.add(nr)
+                         
              except Exception as rel_err:
                  logger.error(f"Graph extraction failed: {rel_err}")
 

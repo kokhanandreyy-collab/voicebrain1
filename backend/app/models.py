@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, Boolean, Integer, JSON, LargeBinary, Date
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import uuid
+import datetime
 
 Base = declarative_base()
 
@@ -86,13 +87,12 @@ class User(Base):
 
 class NoteRelation(Base):
     __tablename__ = "note_relations"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    note_id1 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
-    note_id2 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
-    relation_type = Column(String, nullable=False) # caused, related, updated, contradicted
-    strength = Column(Float, default=1.0) # 0-1
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = Column(Integer, primary_key=True, index=True)
+    note_id1 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"))
+    note_id2 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"))
+    relation_type = Column(String)  # "caused", "related", "updated", "contradicted"
+    strength = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class NoteStatus:
     PENDING = "PENDING"

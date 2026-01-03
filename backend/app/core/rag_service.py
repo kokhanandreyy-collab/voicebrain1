@@ -41,33 +41,43 @@ class RagService:
             vector_notes = list(vector_res.scalars().all())
 
             # 2. Graph Traversal (1-hop)
-            related_ids = set([n.id for n in vector_notes])
-            if related_ids:
+            # Find neighbors for the 5 vector notes, prioritize by strength
+            vector_ids = set([n.id for n in vector_notes])
+            related_notes_map = {n.id: n for n in vector_notes}
+            
+            if vector_ids:
                 graph_res = await db.execute(
                     select(NoteRelation)
                     .where(
-                        (NoteRelation.note_id1.in_(related_ids)) | 
-                        (NoteRelation.note_id2.in_(related_ids))
+                        (NoteRelation.note_id1.in_(vector_ids)) | 
+                        (NoteRelation.note_id2.in_(vector_ids))
                     )
+                    .order_by(desc(NoteRelation.strength))
                 )
                 relations = graph_res.scalars().all()
+                
+                neighbor_ids = []
                 for r in relations:
-                    # Traversal: if id1 is known, take id2, else id1
-                    target = r.note_id2 if r.note_id1 in related_ids else r.note_id1
-                    related_ids.add(target)
+                    target = r.note_id2 if r.note_id1 in vector_ids else r.note_id1
+                    if target not in related_notes_map:
+                        neighbor_ids.append(target)
+                        if len(neighbor_ids) >= 5: # top_k=5 by strength desc
+                            break
+                            
+                if neighbor_ids:
+                    nb_notes_res = await db.execute(select(Note).where(Note.id.in_(neighbor_ids)))
+                    neighbor_notes = nb_notes_res.scalars().all()
+                    for n in neighbor_notes:
+                        related_notes_map[n.id] = n
             
-            # Fetch content for extended graph
-            final_ids = list(related_ids)[:10]
-            if not final_ids:
-                final_notes = []
-            else:
-                nb_res = await db.execute(select(Note).where(Note.id.in_(final_ids)))
-                final_notes = nb_res.scalars().all()
+            # Build context from unique collected notes
+            final_notes = list(related_notes_map.values())[:10]
             
             context_parts = []
             for n in final_notes:
                 summary_part = n.summary[:200] if n.summary else "No summary"
-                context_parts.append(f"Note: {n.title} (Related)\nSummary: {summary_part}")
+                note_type = "Vector Match" if n.id in vector_ids else "Graph Neighbor"
+                context_parts.append(f"Note: {n.title} ({note_type})\nSummary: {summary_part}")
             
             return "\n".join(context_parts) if context_parts else "No recent related context found."
         except Exception as e:
@@ -97,7 +107,7 @@ class RagService:
                       .order_by(LongTermMemory.importance_score.desc(), LongTermMemory.created_at.desc())
                       .limit(5)
                   )
-                 final = result.scalars().all()
+                  final = result.scalars().all()
 
             parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]
             return "\n".join(parts) if parts else "No long-term knowledge recorded yet."

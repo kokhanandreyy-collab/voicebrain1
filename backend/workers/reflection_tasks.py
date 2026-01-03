@@ -79,11 +79,11 @@ async def _process_reflection_async(user_id: str):
              
              # 6. Graph Relations (New)
              try:
-                 # Specific prompt as requested
+                 # Specific strict prompt as requested
                  rel_prompt = (
-                     "На основе этих заметок сгенерируй связи между ними в формате JSON list: "
-                     "[{'note1_id': str, 'note2_id': str, 'type': str, 'strength': float}]. "
-                     "Используй ID заметок, предоставленные ниже."
+                     "Генерируй связи строго в JSON list: "
+                     "[{'note1_id': str, 'note2_id': str, 'type': 'caused|related|updated|contradicted', 'strength': float 0.5–1.0}]. "
+                     "Используй ID заметок (UUID), предоставленные ниже."
                      f"\n\nЗаметки:\n"
                  )
                  notes_data = [{"id": n.id, "text": n.transcription_text[:200]} for n in notes]

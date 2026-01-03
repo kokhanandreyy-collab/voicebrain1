@@ -90,7 +90,7 @@ class NoteRelation(Base):
     note_id1 = Column(String, ForeignKey("notes.id"), nullable=False)
     note_id2 = Column(String, ForeignKey("notes.id"), nullable=False)
     relation_type = Column(String, nullable=False) # caused, related, updated, contradicted
-    strength = Column(Float, default=0.0) # 0-1
+    strength = Column(Float, default=1.0) # 0-1
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class NoteStatus:

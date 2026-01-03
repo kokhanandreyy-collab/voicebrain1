@@ -19,7 +19,7 @@ def event_loop():
     yield loop
     loop.close()
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session", autouse=False)
 async def setup_db():
     # Create tables
     async with engine.begin() as conn:

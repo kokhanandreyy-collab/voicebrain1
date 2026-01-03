@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import httpx
 from datetime import timedelta
 import os
-from infrastructure.database import get_db, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, VK_CLIENT_ID, VK_CLIENT_SECRET, MAILRU_CLIENT_ID, MAILRU_CLIENT_SECRET, TWITTER_CLIENT_ID, TWITTER_CLIENT_SECRET
+from infrastructure.database import get_db
+from infrastructure.config import settings
 from app.models import User
 from app.core.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 import uuid
@@ -19,38 +20,36 @@ PROVIDERS = {
         "auth_url": "https://accounts.google.com/o/oauth2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
         "user_info_url": "https://www.googleapis.com/oauth2/v2/userinfo",
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
         "scope": "openid email profile"
     },
     "vk": {
         "auth_url": "https://oauth.vk.com/authorize",
         "token_url": "https://oauth.vk.com/access_token",
         "user_info_url": "https://api.vk.com/method/users.get",
-        "client_id": VK_CLIENT_ID,
-        "client_secret": VK_CLIENT_SECRET,
+        "client_id": settings.VK_CLIENT_ID,
+        "client_secret": settings.VK_CLIENT_SECRET,
         "scope": "email"
     },
     "mailru": {
         "auth_url": "https://oauth.mail.ru/login",
         "token_url": "https://oauth.mail.ru/token",
         "user_info_url": "https://oauth.mail.ru/userinfo",
-        "client_id": MAILRU_CLIENT_ID,
-        "client_secret": MAILRU_CLIENT_SECRET,
+        "client_id": settings.MAILRU_CLIENT_ID,
+        "client_secret": settings.MAILRU_CLIENT_SECRET,
         "scope": "userinfo"
     },
     "twitter": {
         "auth_url": "https://twitter.com/i/oauth2/authorize",
         "token_url": "https://api.twitter.com/2/oauth2/token",
         "user_info_url": "https://api.twitter.com/2/users/me",
-        "client_id": TWITTER_CLIENT_ID,
-        "client_secret": TWITTER_CLIENT_SECRET,
+        "client_id": settings.TWITTER_CLIENT_ID,
+        "client_secret": settings.TWITTER_CLIENT_SECRET,
         "scope": "users.read tweet.read",
         "extra_params": {"code_challenge": "challenge", "code_challenge_method": "plain"} # Simplification for demo
     }
 }
-
-from infrastructure.config import settings
 
 @router.get("/{provider}/login")
 async def login_via_provider(provider: str):

@@ -3,6 +3,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from workers.reflection_tasks import _process_reflection_async
 from app.models import Note, User, NoteRelation
 
+@pytest.fixture
+def mock_db_session():
+    mock = AsyncMock()
+    mock.commit = AsyncMock()
+    mock.close = AsyncMock()
+    mock.refresh = AsyncMock()
+    mock.execute = AsyncMock()
+    mock.add = MagicMock() # add is usually synchronous in SA, but we can verify calls
+    return mock
+
 @pytest.mark.asyncio
 async def test_graph_relation_extraction(mock_db_session):
     """Test that relationships are extracted and saved."""
@@ -32,16 +42,20 @@ async def test_graph_relation_extraction(mock_db_session):
          patch("workers.reflection_tasks.AsyncSessionLocal") as mock_session_cls:
          
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session
-         mock_ai.get_chat_completion.side_effect = [summary_resp, relation_resp]
+         
+         # Async methods need AsyncMock
+         mock_ai.get_chat_completion = AsyncMock(side_effect=[summary_resp, relation_resp])
+         mock_ai.get_embedding = AsyncMock(return_value=[0.0]*1536)
+         
          mock_ai.clean_json_response.side_effect = [summary_resp, relation_resp]
-         mock_ai.get_embedding.return_value = [0.0]*1536
          
          await _process_reflection_async(user_id)
          
          # 3. Verify
          # Check that NoteRelation was added
          added_objects = [call.args[0] for call in mock_db_session.add.call_args_list]
-         relations = [obj for obj in added_objects if isinstance(obj, NoteRelation)]
+         print(f"DEBUG: Added objects: {added_objects}")
+         relations = [obj for obj in added_objects if type(obj).__name__ == "NoteRelation"]
          
          assert len(relations) == 1
          rel = relations[0]

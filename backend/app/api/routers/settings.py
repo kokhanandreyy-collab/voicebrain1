@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from infrastructure.database import get_db
 from app.models import User
-from app.dependencies import get_current_user
+from app.api.dependencies import get_current_user
 
 router = APIRouter()
 

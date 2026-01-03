@@ -17,7 +17,7 @@ from infrastructure.config import settings
 
 router = APIRouter()
 
-from app.core.storage import storage_client
+from infrastructure.storage import storage_client
 import uuid
 
 @router.post("/upload", response_model=NoteResponse)

@@ -58,8 +58,11 @@ async def main():
     logger.info("Database initialized.")
 
     # Import handlers here to avoid circular imports
-    from telegram.handlers import chat, voice, clarification
+    from telegram.handlers import chat, voice, clarification, notes, integrations
     
+    # Order matters: commands/specific filters first
+    dp.include_router(notes.router)
+    dp.include_router(integrations.router)
     dp.include_router(chat.router)
     dp.include_router(voice.router)
     dp.include_router(clarification.router)

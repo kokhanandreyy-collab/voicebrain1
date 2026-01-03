@@ -143,7 +143,12 @@ class NotePipeline:
                                 question = str(item).replace("Clarification Needed:", "").strip()
                                 msg += f"\n\n❓ **Question:** {escape_markdown(question)}\n_Reply to answer_"
                                 break
-                    await bot.send_message(chat_id=user.telegram_chat_id, text=msg, parse_mode="Markdown")
+                    
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="👁️ View Details", callback_data=f"view_note:{note.id}")]
+                    ])
+                    await bot.send_message(chat_id=user.telegram_chat_id, text=msg, parse_mode="Markdown", reply_markup=kb)
                 except Exception as e: logger.warning(f"TG notify failed: {e}")
 
         # Push

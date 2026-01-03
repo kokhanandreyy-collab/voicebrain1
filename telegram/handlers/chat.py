@@ -1,8 +1,10 @@
 import httpx
 from aiogram import Router, types, F
 from aiogram.filters import Command, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from telegram.bot import get_api_key, set_api_key, API_BASE_URL, logger
+from telegram.utils.formatting import escape_md, format_note_rich
 
 router = Router()
 
@@ -71,18 +73,17 @@ async def cmd_ask(message: types.Message, command: CommandObject):
                 clarification = data.get("ask_clarification")
                 note_id = data.get("note_id")
 
-                text = f"🤖 **AI Answer:**\n\n{answer}"
+                text = f"🤖 *AI Answer:*\n\n{escape_md(answer)}"
                 
                 # If there's a clarification, add it with a special marker
                 if clarification:
-                    text += f"\n\n❓ **Clarification Needed:**\n_{clarification}_"
+                    text += f"\n\n❓ *Clarification Needed:*\n_{escape_md(clarification)}_\n\n_Reply to this message to answer\!_"
                     
                 builder = InlineKeyboardBuilder()
                 if note_id:
-                    # In a real app we might link to the web dashboard
-                    builder.button(text="👁️ View on Web", url=f"http://localhost:5173/dashboard?id={note_id}")
+                    builder.button(text="👁️ View Details", callback_data=f"view_note:{note_id}")
                 
-                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
             else:
                 await message.answer(f"❌ Error: {response.text}")
         except Exception as e:
@@ -90,9 +91,12 @@ async def cmd_ask(message: types.Message, command: CommandObject):
             await message.answer("❌ Failed to connect to VoiceBrain API.")
 
 @router.message(F.text & ~F.text.startswith("/"))
-async def handle_direct_text(message: types.Message):
+async def handle_direct_text(message: types.Message, state: FSMContext):
     """Handle text that isn't a command - could be a conversation or note update."""
-    # For now, treat it as a general 'Ask AI' if linked
+    current_state = await state.get_state()
+    if current_state is not None:
+        return # Let the specific state handler deal with it
+
     api_key = get_api_key(message.chat.id)
     if not api_key:
         return # Transparent if not linked

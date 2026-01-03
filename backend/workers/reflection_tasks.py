@@ -73,9 +73,43 @@ async def _process_reflection_async(user_id: str):
              # 5. Update User Identity Logic
              if identity:
                  user_res = await db.execute(select(User).where(User.id == user_id))
-                 user = user_res.scalars().first()
-                 if user:
-                     user.identity_summary = identity
+                 user_obj = user_res.scalars().first()
+                 if user_obj:
+                     user_obj.identity_summary = identity
+             
+             # 6. Graph Relations (New)
+             try:
+                 # Minimal prompt for relations
+                 rel_prompt = (
+                     "Analyze these notes specifically for causal or semantic connections. "
+                     "Return JSON: { 'relations': [ { 'id1': 'note_id', 'id2': 'note_id', 'type': 'caused/related/contradicted', 'strength': 0.0-1.0 } ] } "
+                     "Only output strong connections (>0.6)."
+                     f"\nNotes JSON with IDs:\n"
+                 )
+                 notes_json = json.dumps([{"id": n.id, "text": n.transcription_text[:200]} for n in notes])
+                 rel_prompt += notes_json
+                 
+                 rel_resp = await ai_service.get_chat_completion([
+                     {"role": "system", "content": "You are a graph database agent. Return ONLY JSON."},
+                     {"role": "user", "content": rel_prompt}
+                 ])
+                 rel_data = json.loads(ai_service.clean_json_response(rel_resp))
+                 relations = rel_data.get("relations", [])
+                 
+                 from app.models import NoteRelation
+                 for r in relations:
+                     # Validate IDs exist in our set to avoid FK errors (though they should)
+                     # Add to DB
+                     nr = NoteRelation(
+                         note_id1=r['id1'],
+                         note_id2=r['id2'],
+                         relation_type=r['type'],
+                         strength=r['strength']
+                     )
+                     db.add(nr)
+                     
+             except Exception as rel_err:
+                 logger.error(f"Graph extraction failed: {rel_err}")
 
              await db.commit()
              logger.info(f"Reflection saved for user {user_id} (Score: {score})")

@@ -46,13 +46,14 @@ class RagService:
                 graph_res = await db.execute(
                     select(NoteRelation)
                     .where(
-                        (NoteRelation.source_note_id.in_(related_ids)) | 
-                        (NoteRelation.target_note_id.in_(related_ids))
+                        (NoteRelation.note_id1.in_(related_ids)) | 
+                        (NoteRelation.note_id2.in_(related_ids))
                     )
                 )
                 relations = graph_res.scalars().all()
                 for r in relations:
-                    target = r.target_note_id if r.source_note_id in related_ids else r.source_note_id
+                    # Traversal: if id1 is known, take id2, else id1
+                    target = r.note_id2 if r.note_id1 in related_ids else r.note_id1
                     related_ids.add(target)
             
             # Fetch content for extended graph

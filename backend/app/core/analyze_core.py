@@ -158,13 +158,27 @@ class AnalyzeCore:
             
         # 3.3 Clarifying Question Handling
         # If 'ask_clarification' exists, we put it in action_items so the user sees it immediately
+        # Requirement: If DeepSeek response contains "not sure", "clarify", "don't know" in summary, we promote it
         ask_clarification = analysis.get("ask_clarification")
+        
+        # Phrase detection as requested
+        summary_lower = str(analysis.get("summary", "")).lower()
+        phrases = ["not sure", "не уверен", "уточни", "не знаю", "don't know", "clarify"]
+        if not ask_clarification:
+            for phrase in phrases:
+                if phrase in summary_lower:
+                    # Try to extract the sentence or just mark it
+                    ask_clarification = "AI is unsure about some details. Please clarify."
+                    break
+
         if ask_clarification:
             # Prepend to action items with distinct marker
             if not note.action_items: note.action_items = []
             note.action_items = [f"Clarification Needed: {ask_clarification}"] + list(note.action_items)
             # Ensure it is saved back
             note.action_items = list(note.action_items)
+            # Record it in analysis dict too for frontend
+            analysis["ask_clarification"] = ask_clarification
         
         # 4. Embed
         await rag_service.embed_note(note, db)

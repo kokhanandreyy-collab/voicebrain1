@@ -110,14 +110,20 @@ async def handle_text(message: Message):
             await message.answer("⚠️ Not linked.")
             return
 
+        text_content = message.text
+        # If this is a reply to the bot, we prepend the bot's message as context
+        if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+            original_text = message.reply_to_message.text or message.reply_to_message.caption or ""
+            text_content = f"Question: {original_text}\nAnswer: {message.text}"
+
         # Create Text Note
         new_note = Note(
             user_id=user.id,
-            title="Text Input",
+            title="Clarification/Text",
             status="PROCESSING",
-            transcription_text=message.text, # Direct text
+            transcription_text=text_content,
             is_audio_note=False,
-            summary="Processing text..."
+            summary="Processing response..."
         )
         db.add(new_note)
         await db.commit()
@@ -125,17 +131,9 @@ async def handle_text(message: Message):
 
         # Trigger pipeline
         from workers.analyze_tasks import process_analyze
-        # We skip 'transcribe' task since we have text. Directly analyze.
-        # But wait, pipeline usually orchestrates transcription.
-        # Pipeline checks: if note.transcription_text is present, skips transcription.
-        # So we can call process_analyze (which calls pipeline).
-        # But process_analyze is for analyze phase? Or full pipeline?
-        # workers/analyze_tasks.py logic: calls pipeline.process(note_id).
-        # pipeline.process handles skipping transcription if text exists.
-        
         process_analyze.delay(new_note.id)
         
-        await message.answer("📝 Processing your reply...")
+        await message.answer("📝 Learning from your response...")
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: Message):

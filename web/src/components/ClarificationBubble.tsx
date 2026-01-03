@@ -19,7 +19,6 @@ export function ClarificationBubble({ noteId, question }: ClarificationBubblePro
         try {
             await api.post(`/notes/${noteId}/reply`, { answer: reply });
             setHasReplied(true);
-            setReply('');
         } catch (err) {
             console.error("Reply failed", err);
             alert("Failed to send reply");
@@ -30,11 +29,24 @@ export function ClarificationBubble({ noteId, question }: ClarificationBubblePro
 
     if (hasReplied) {
         return (
-            <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800 rounded-2xl flex items-center justify-between animate-in fade-in zoom-in duration-300">
-                <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">✨ Thank you! Adaptive memory updated.</p>
-                <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                    <Check size={14} />
+            <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800 rounded-2xl flex flex-col gap-2 animate-in fade-in zoom-in duration-300 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                    <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium font-mono">
+                        ✨ Learning from: <span className="opacity-80 italic">"{reply}"</span>
+                    </p>
+                    <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                        <Check size={14} />
+                    </div>
                 </div>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setHasReplied(false);
+                    }}
+                    className="text-[10px] text-emerald-600 dark:text-emerald-500 font-bold uppercase tracking-wider hover:underline w-fit"
+                >
+                    Edit Answer
+                </button>
             </div>
         );
     }

@@ -19,6 +19,7 @@ router = APIRouter()
 
 from infrastructure.storage import storage_client
 import uuid
+import json
 
 @router.post("/upload", response_model=NoteResponse)
 async def upload_note(
@@ -286,9 +287,27 @@ async def ask_ai(
     ])
     
     # 4. Generate Answer
-    answer = await ai_service.ask_notes(context_text, req.question)
+    user_context = f"Identity: {current_user.identity_summary}\nPreferences: {json.dumps(current_user.adaptive_preferences or {})}"
+    answer = await ai_service.ask_notes(context_text, req.question, user_context=user_context)
     
-    return {"answer": answer}
+    # 5. Adaptive Memory Injection
+    # Check if the most relevant note has a pending clarification that we can surface
+    ask_clarification = None
+    note_id = None
+    
+    if relevant_notes:
+        note_id = relevant_notes[0].id
+        # Looking for existing clarification in action items
+        for item in (relevant_notes[0].action_items or []):
+            if str(item).startswith("Clarification Needed:"):
+                ask_clarification = str(item).replace("Clarification Needed:", "").strip()
+                break
+
+    return {
+        "answer": answer,
+        "ask_clarification": ask_clarification,
+        "note_id": note_id
+    }
     
 
 

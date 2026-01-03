@@ -426,7 +426,7 @@ class AIService:
             logger.error(f"Embedding Error: {e}")
             return [0.0] * 1536
 
-    async def ask_notes(self, context: str, question: str) -> str:
+    async def ask_notes(self, context: str, question: str, user_context: Optional[str] = None) -> str:
         """
         Answer a user question based on the provided note context.
         """
@@ -444,6 +444,9 @@ class AIService:
             )
             
             system_prompt: str = await self.get_system_prompt("ask_notes", default_prompt)
+            
+            if user_context:
+                system_prompt = f"User Background & Preferences:\n{user_context}\n\n{system_prompt}"
             
             user_content: str = f"Context:\n{context}\n\nQuestion: {question}"
 

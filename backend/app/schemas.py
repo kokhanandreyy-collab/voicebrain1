@@ -123,6 +123,8 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
+    ask_clarification: Optional[str] = None
+    note_id: Optional[str] = None
 
 class TagUsage(BaseModel):
     name: str

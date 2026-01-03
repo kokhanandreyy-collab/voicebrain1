@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { Sparkles, X, Send, BrainCircuit, Bot, Mic, Trash2 } from 'lucide-react';
+import { Sparkles, X, Send, BrainCircuit, Bot, Mic, Trash2, Check } from 'lucide-react';
 // import { Button } from './ui';
 import api from '../api';
 import ReactMarkdown from 'react-markdown';
@@ -15,6 +15,9 @@ interface AskAIModalProps {
 interface Message {
     role: 'user' | 'assistant';
     content: string;
+    ask_clarification?: string;
+    note_id?: string;
+    isResolved?: boolean;
 }
 
 export function AskAIModal({ isOpen, onClose, initialQuery = '', autoStartListening = false }: AskAIModalProps) {
@@ -120,7 +123,12 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', autoStartListen
 
         try {
             const { data } = await api.post('/notes/ask', { question: q });
-            const aiMsg: Message = { role: 'assistant', content: data.answer };
+            const aiMsg: Message = {
+                role: 'assistant',
+                content: data.answer,
+                ask_clarification: data.ask_clarification,
+                note_id: data.note_id
+            };
             setMessages(prev => [...prev, aiMsg]);
         } catch (error) {
             console.error("Ask AI Failed", error);
@@ -206,6 +214,69 @@ export function AskAIModal({ isOpen, onClose, initialQuery = '', autoStartListen
                                                 <ReactMarkdown className="prose prose-sm prose-slate dark:prose-invert max-w-none">
                                                     {msg.content}
                                                 </ReactMarkdown>
+
+                                                {msg.ask_clarification && (
+                                                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                                        {!msg.isResolved ? (
+                                                            <>
+                                                                <div className="flex items-center gap-2 mb-2 text-orange-600 dark:text-orange-400">
+                                                                    <Sparkles size={14} />
+                                                                    <span className="text-[10px] font-bold uppercase tracking-wider">Clarification Needed</span>
+                                                                </div>
+                                                                <p className="text-sm font-semibold mb-3">{msg.ask_clarification}</p>
+                                                                <div className="flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Your answer..."
+                                                                        className="flex-1 px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-1 focus:ring-brand-blue outline-none"
+                                                                        autoFocus
+                                                                        defaultValue={msg.isResolved === false ? "" : ""} // Can't easily store previous here without complex state
+                                                                        onKeyDown={async (e) => {
+                                                                            if (e.key === 'Enter') {
+                                                                                const val = (e.target as HTMLInputElement).value;
+                                                                                if (!val.trim()) return;
+
+                                                                                // Send to backend
+                                                                                try {
+                                                                                    if (msg.note_id) {
+                                                                                        await api.post(`/notes/${msg.note_id}/reply`, { answer: val });
+                                                                                    } else {
+                                                                                        handleAsk(`Clarification Answer: ${val}`);
+                                                                                    }
+                                                                                    // Mark as resolved ONLY after success
+                                                                                    const newMessages = [...messages];
+                                                                                    newMessages[idx].isResolved = true;
+                                                                                    // Append to content so it's visible in history
+                                                                                    newMessages[idx].content += `\n\n**Answer:** ${val}`;
+                                                                                    setMessages(newMessages);
+                                                                                } catch (err) {
+                                                                                    console.error("Failed to send clarification", err);
+                                                                                    alert("Failed to send answer.");
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                                                    <Check size={12} /> Adaptive Memory Updated
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const newMessages = [...messages];
+                                                                        newMessages[idx].isResolved = false;
+                                                                        setMessages(newMessages);
+                                                                    }}
+                                                                    className="text-[10px] text-slate-400 hover:text-brand-blue font-bold uppercase tracking-widest hover:underline"
+                                                                >
+                                                                    Edit Reply
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

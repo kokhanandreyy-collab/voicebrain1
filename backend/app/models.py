@@ -87,9 +87,9 @@ class User(Base):
 class NoteRelation(Base):
     __tablename__ = "note_relations"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    note_id1 = Column(String, ForeignKey("notes.id"), nullable=False)
-    note_id2 = Column(String, ForeignKey("notes.id"), nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    note_id1 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
+    note_id2 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
     relation_type = Column(String, nullable=False) # caused, related, updated, contradicted
     strength = Column(Float, default=1.0) # 0-1
     created_at = Column(DateTime(timezone=True), server_default=func.now())

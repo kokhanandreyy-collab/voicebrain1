@@ -184,7 +184,7 @@ async def _cleanup_memory_async() -> None:
             if n.storage_key:
                 try: await storage_client.delete_file(n.storage_key)
                 except Exception: pass
-            await db.delete(n)
+            db.delete(n)
             c_notes += 1
             
         # 2. Delete unimportant LongTermMemories (Score < 5, > 180 days)
@@ -196,7 +196,7 @@ async def _cleanup_memory_async() -> None:
         
         c_mems = 0
         for m in mems_to_del:
-            await db.delete(m)
+            db.delete(m)
             c_mems += 1
 
         # 3. Prune Weak Relations (Strength < 0.3)
@@ -206,7 +206,7 @@ async def _cleanup_memory_async() -> None:
         
         c_rels = 0
         for r in rels_to_del:
-            await db.delete(r)
+            db.delete(r)
             c_rels += 1
             
         await db.commit()

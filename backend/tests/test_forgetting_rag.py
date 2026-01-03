@@ -51,6 +51,7 @@ async def test_cleanup_logic():
     mock_rel_res.scalars().all.return_value = [r1]
 
     mock_db.execute.side_effect = [mock_notes_res, mock_ltm_res, mock_rel_res]
+    mock_db.delete = MagicMock() # delete is sync
 
     with patch("workers.maintenance_tasks.AsyncSessionLocal", return_value=mock_db), \
          patch("workers.maintenance_tasks.storage_client") as mock_storage:
@@ -62,7 +63,7 @@ async def test_cleanup_logic():
          # storage delete called for n1
          mock_storage.delete_file.assert_called_with("k1")
          
-         deleted = [args[0] for args in mock_db.delete.call_args_list]
+         deleted = [call.args[0] for call in mock_db.delete.call_args_list]
          assert n1 in deleted
          assert m1 in deleted
          assert r1 in deleted

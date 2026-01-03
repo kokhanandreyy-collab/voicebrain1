@@ -4,7 +4,15 @@ import os
 import sqlite3
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+import sys
 from dotenv import load_dotenv
+
+# Add project root to sys.path to allow importing from 'shared'
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+
+from shared.api_client import VoiceBrainAPIClient
 
 # Load env from root or backend
 load_dotenv()
@@ -44,6 +52,10 @@ def set_api_key(chat_id: int, api_key: str):
     c.execute("INSERT OR REPLACE INTO users (chat_id, api_key) VALUES (?, ?)", (str(chat_id), api_key))
     conn.commit()
     conn.close()
+
+def get_client(chat_id: int) -> VoiceBrainAPIClient:
+    api_key = get_api_key(chat_id)
+    return VoiceBrainAPIClient(base_url=API_BASE_URL, api_key=api_key)
 
 # Initialize Bot and Dispatcher
 bot = Bot(token=TOKEN)

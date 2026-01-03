@@ -8,8 +8,10 @@ router = Router()
 
 @router.message(F.voice)
 async def handle_voice(message: types.Message):
-    api_key = get_api_key(message.chat.id)
-    if not api_key:
+    from telegram.bot import get_client
+    
+    client = get_client(message.chat.id)
+    if not client.api_key:
         await message.answer("⚠️ Your account is not linked. Use `/start <api_key>` to link it.")
         return
 
@@ -33,27 +35,14 @@ async def handle_voice(message: types.Message):
 
         await message.answer("✨ Processing your note...")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{API_BASE_URL}/notes/upload",
-                files=files,
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=60.0
-            )
+        # Shared client handles the upload
+        await client.upload_voice(files=files)
+            
+        await message.answer(
+            f"✅ *Note captured\!*\n"
+            f"I'm analyzing your voice now\. I'll send you a summary shortly if clarification is needed\.",
+            parse_mode="MarkdownV2"
+        )
 
-            if response.status_code == 200:
-                data = response.json()
-                note_id = data.get("id")
-                # The backend handles transcription & analysis asynchronously.
-                # We show a success message.
-                await message.answer(
-                    f"✅ **Note captured!**\n"
-                    f"I'm analyzing your voice now. I'll send you a summary shortly if clarification is needed.",
-                    parse_mode="Markdown"
-                )
-            else:
-                await message.answer(f"❌ Upload failed: {response.text}")
-
-    except Exception as e:
-        logger.error(f"Voice Processing Error: {e}")
-        await message.answer("❌ Failed to process voice message.")
+    finally:
+        await client.close()

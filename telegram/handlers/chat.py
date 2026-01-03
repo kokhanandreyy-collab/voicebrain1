@@ -46,8 +46,10 @@ async def cmd_help(message: types.Message):
 
 @router.message(Command("ask"))
 async def cmd_ask(message: types.Message, command: CommandObject):
-    api_key = get_api_key(message.chat.id)
-    if not api_key:
+    from telegram.bot import get_client
+    
+    client = get_client(message.chat.id)
+    if not client.api_key:
         await message.answer("⚠️ Please link your account first using `/start <api_key>`")
         return
 
@@ -57,49 +59,39 @@ async def cmd_ask(message: types.Message, command: CommandObject):
 
     query = command.args
     await message.bot.send_chat_action(message.chat.id, "typing")
-    # await message.answer("🧠 Searching your brain...") # Optional, maybe typing is enough
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{API_BASE_URL}/notes/ask",
-                json={"question": query},
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=30.0
-            )
+    try:
+        data = await client.ask_ai(query)
+        answer = data.answer
+        clarification = data.ask_clarification
+        note_id = data.note_id
+
+        text = f"🤖 *AI Answer:*\n\n{escape_md(answer)}"
+        
+        builder = InlineKeyboardBuilder()
+        if note_id:
+            builder.button(text="👁️ View Details", callback_data=f"view_note:{note_id}")
+        
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
+
+        # If there's a clarification, send it as a separate highlighted message
+        if clarification:
+            from telegram.utils.formatting import format_clarification_block
+            clarify_text = format_clarification_block(clarification)
             
-            if response.status_code == 200:
-                data = response.json()
-                answer = data.get("answer", "No answer found.")
-                clarification = data.get("ask_clarification")
-                note_id = data.get("note_id")
-
-                text = f"🤖 *AI Answer:*\n\n{escape_md(answer)}"
-                
-                builder = InlineKeyboardBuilder()
-                if note_id:
-                    builder.button(text="👁️ View Details", callback_data=f"view_note:{note_id}")
-                
-                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
-
-                # If there's a clarification, send it as a separate highlighted message
-                if clarification:
-                    from telegram.utils.formatting import format_clarification_block
-                    clarify_text = format_clarification_block(clarification)
-                    
-                    clarify_builder = InlineKeyboardBuilder()
-                    clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id or 'none'}")
-                    
-                    await message.answer(
-                        clarify_text, 
-                        reply_markup=clarify_builder.as_markup(), 
-                        parse_mode="MarkdownV2"
-                    )
-            else:
-                await message.answer(f"❌ Error: {response.text}")
-        except Exception as e:
-            logger.error(f"Ask AI Error: {e}")
-            await message.answer("❌ Failed to connect to VoiceBrain API.")
+            clarify_builder = InlineKeyboardBuilder()
+            clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id or 'none'}")
+            
+            await message.answer(
+                clarify_text, 
+                reply_markup=clarify_builder.as_markup(), 
+                parse_mode="MarkdownV2"
+            )
+    except Exception as e:
+        logger.error(f"Ask AI Error: {e}")
+        await message.answer("❌ Failed to connect to VoiceBrain API.")
+    finally:
+        await client.close()
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_direct_text(message: types.Message, state: FSMContext):

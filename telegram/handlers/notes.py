@@ -14,91 +14,78 @@ class NoteStates(StatesGroup):
 
 @router.message(Command("notes"))
 async def cmd_list_notes(message: types.Message):
-    api_key = get_api_key(message.chat.id)
-    if not api_key:
+    from telegram.bot import get_client
+    from telegram.utils.formatting import escape_md
+    
+    client = get_client(message.chat.id)
+    if not client.api_key:
         await message.answer("⚠️ Please link your account first.")
         return
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{API_BASE_URL}/notes",
-                headers={"Authorization": f"Bearer {api_key}"},
-                params={"limit": 10},
-                timeout=10.0
-            )
-            if response.status_code == 200:
-                notes = response.json()
-                if not notes:
-                    await message.answer("📝 You don't have any notes yet.")
-                    return
+    try:
+        notes = await client.get_notes(limit=10)
+        if not notes:
+            await message.answer("📝 You don't have any notes yet.")
+            return
 
-                from telegram.utils.formatting import escape_md
-                builder = InlineKeyboardBuilder()
-                text = "📂 *Your Recent Notes:*\n\n"
-                for note in notes:
-                    title = note.get("title") or "Untitled"
-                    note_id = note.get("id")
-                    created_at = note.get("created_at", "").split("T")[0]
-                    text += f"• *{escape_md(title)}* \({escape_md(created_at)}\)\n"
-                    builder.button(text=f"👁️ {title[:20]}...", callback_data=f"view_note:{note_id}")
-                
-                builder.adjust(1)
-                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
-            else:
-                await message.answer(f"❌ Error fetching notes: {response.status_code}")
-        except Exception as e:
-            logger.error(f"List Notes Error: {e}")
-            await message.answer("❌ Connection failed.")
+        builder = InlineKeyboardBuilder()
+        text = "📂 *Your Recent Notes:*\n\n"
+        for note in notes:
+            title = note.get("title") or "Untitled"
+            note_id = note.get("id")
+            created_at = note.get("created_at", "").split("T")[0]
+            text += f"• *{escape_md(title)}* \({escape_md(created_at)}\)\n"
+            builder.button(text=f"👁️ {title[:20]}...", callback_data=f"view_note:{note_id}")
+        
+        builder.adjust(1)
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
+    except Exception as e:
+        logger.error(f"List Notes Error: {e}")
+        await message.answer("❌ Connection failed.")
+    finally:
+        await client.close()
 
 @router.callback_query(F.data.startswith("view_note:"))
 async def view_note_callback(callback: types.CallbackQuery):
     note_id = callback.data.split(":")[1]
-    api_key = get_api_key(callback.message.chat.id)
+    from telegram.bot import get_client
     from telegram.utils.formatting import escape_md, format_note_rich, format_clarification_block
     
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                f"{API_BASE_URL}/notes/{note_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10.0
-            )
-            if response.status_code == 200:
-                note = response.json()
+    client = get_client(callback.message.chat.id)
+    try:
+        note = await client.get_note_detail(note_id)
+        
+        # Use rich formatter for the main body
+        text = format_note_rich(note)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🗑️ Delete", callback_data=f"delete_note:{note_id}")
+        builder.button(text="🔄 Sync", callback_data=f"sync_note_menu:{note_id}")
+        builder.button(text="🔙 Back", callback_data="list_notes")
+        builder.adjust(2)
+
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
+
+        # Scan for clarifications in action items
+        action_items = note.get("action_items") or []
+        for item in action_items:
+            if "Clarification Needed:" in str(item):
+                question = str(item).replace("Clarification Needed:", "").strip()
+                clarify_text = format_clarification_block(question)
                 
-                # Use rich formatter for the main body
-                text = format_note_rich(note)
+                clarify_builder = InlineKeyboardBuilder()
+                clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id}")
                 
-                builder = InlineKeyboardBuilder()
-                builder.button(text="🗑️ Delete", callback_data=f"delete_note:{note_id}")
-                builder.button(text="🔄 Sync", callback_data=f"sync_note_menu:{note_id}")
-                builder.button(text="🔙 Back", callback_data="list_notes")
-                builder.adjust(2)
-
-                await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
-
-                # Scan for clarifications in action items
-                action_items = note.get("action_items") or []
-                for item in action_items:
-                    if "Clarification Needed:" in str(item):
-                        question = str(item).replace("Clarification Needed:", "").strip()
-                        clarify_text = format_clarification_block(question)
-                        
-                        clarify_builder = InlineKeyboardBuilder()
-                        clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id}")
-                        
-                        await callback.message.answer(
-                            clarify_text, 
-                            reply_markup=clarify_builder.as_markup(), 
-                            parse_mode="MarkdownV2"
-                        )
-
-            else:
-                await callback.answer("❌ Note not found or access denied.", show_alert=True)
-        except Exception as e:
-            logger.error(f"View Note Error: {e}")
-            await callback.answer("❌ Connection error.", show_alert=True)
+                await callback.message.answer(
+                    clarify_text, 
+                    reply_markup=clarify_builder.as_markup(), 
+                    parse_mode="MarkdownV2"
+                )
+    except Exception as e:
+        logger.error(f"View Note Error: {e}")
+        await callback.answer("❌ Note details unavailable.", show_alert=True)
+    finally:
+        await client.close()
 
 @router.callback_query(F.data == "list_notes")
 async def list_notes_back(callback: types.CallbackQuery):

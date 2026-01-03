@@ -88,6 +88,7 @@ async def edit_clarify_callback(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "confirm_clarify", ClarifyStates.confirming)
 async def confirm_clarify_callback(callback: types.CallbackQuery, state: FSMContext):
+    from telegram.bot import get_client
     data = await state.get_data()
     answer = data.get("answer")
     note_id = data.get("note_id")
@@ -95,65 +96,50 @@ async def confirm_clarify_callback(callback: types.CallbackQuery, state: FSMCont
     clarification_msg_id = data.get("clarification_msg_id")
     chat_id = data.get("chat_id")
     
-    api_key = get_api_key(callback.message.chat.id)
-    
+    client = get_client(callback.message.chat.id)
     confirm_msg = await callback.message.edit_text("⏳ Updating adaptive memory...")
     
-    async with httpx.AsyncClient() as client:
-        try:
-            # If note_id missing, try to find it
-            if not note_id:
-                notes_resp = await client.get(
-                    f"{API_BASE_URL}/notes",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    params={"limit": 10}
-                )
-                if notes_resp.status_code == 200:
-                    for note in notes_resp.json():
-                        if any(question in str(item) for item in note.get("action_items", [])):
-                            note_id = note.get("id")
-                            break
+    try:
+        # If note_id missing, try to find it
+        if not note_id:
+            notes = await client.get_notes(limit=10)
+            for note in notes:
+                if any(question in str(item) for item in note.get("action_items", [])):
+                    note_id = note.get("id")
+                    break
 
-            if note_id:
-                resp = await client.post(
-                    f"{API_BASE_URL}/notes/{note_id}/reply",
-                    json={"answer": answer},
-                    headers={"Authorization": f"Bearer {api_key}"}
+        if note_id:
+            await client.reply_to_clarification(note_id, answer)
+            
+            # 1. Update the original clarification message to 'Resolved'
+            resolved_text = format_clarification_block(question, answer, resolved=True)
+            
+            # Add 'Edit Answer' button to the resolved block
+            edit_builder = InlineKeyboardBuilder()
+            edit_builder.button(text="🔄 Edit Answer", callback_data=f"answer_clarify:{note_id}")
+            
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=clarification_msg_id,
+                    text=resolved_text,
+                    reply_markup=edit_builder.as_markup(),
+                    parse_mode="MarkdownV2"
                 )
-                if resp.status_code == 200:
-                    # 1. Update the original clarification message to 'Resolved'
-                    resolved_text = format_clarification_block(question, answer, resolved=True)
-                    
-                    # Add 'Edit Answer' button to the resolved block
-                    edit_builder = InlineKeyboardBuilder()
-                    edit_builder.button(text="🔄 Edit Answer", callback_data=f"answer_clarify:{note_id}")
-                    
-                    try:
-                        await bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=clarification_msg_id,
-                            text=resolved_text,
-                            reply_markup=edit_builder.as_markup(),
-                            parse_mode="MarkdownV2"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not edit original clarification msg: {e}")
+            except Exception as e:
+                logger.warning(f"Could not edit original clarification msg: {e}")
 
-                    await confirm_msg.edit_text("✅ *Adaptive Memory Updated\!* ✨\nYour preferences have been applied\.")
-                else:
-                    await confirm_msg.edit_text(f"❌ Failed to update: {resp.text}")
-            else:
-                # Fallback to new note
-                await client.post(
-                    f"{API_BASE_URL}/notes/upload",
-                    json={"transcription_text": f"Answer: {answer}\nContext: {question}"},
-                    headers={"Authorization": f"Bearer {api_key}"}
-                )
-                await confirm_msg.edit_text("✅ *Recorded\!* My memory has been updated (as new context)\.")
-                
-        except Exception as e:
-            logger.error(f"Clarification confirm error: {e}")
-            await confirm_msg.edit_text("❌ Connection error\.")
+            await confirm_msg.edit_text("✅ *Adaptive Memory Updated\!* ✨\nYour preferences have been applied\.")
+        else:
+            # Fallback to new note
+            await client.upload_text_note(f"Answer: {answer}\nContext: {question}")
+            await confirm_msg.edit_text("✅ *Recorded\!* My memory has been updated (as new context)\.")
+            
+    except Exception as e:
+        logger.error(f"Clarification confirm error: {e}")
+        await confirm_msg.edit_text("❌ Connection error\.")
+    finally:
+        await client.close()
     
     await state.clear()
     await callback.answer()

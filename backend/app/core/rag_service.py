@@ -129,20 +129,8 @@ class RagService:
         medium_term = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
         if not medium_term: medium_term = "No related notes found."
 
-        # 3. Long Term (Top 3 Importance)
-        try:
-            lt_res = await db.execute(
-                select(LongTermMemory)
-                .where(LongTermMemory.user_id == note.user_id)
-                .order_by(desc(LongTermMemory.importance_score))
-                .limit(3)
-            )
-            lt_mems = lt_res.scalars().all()
-            long_term = "\n".join([f"- {m.summary_text}" for m in lt_mems])
-        except Exception as e:
-            logger.error(f"Long-term fetch failed: {e}")
-            long_term = ""
-            
+        # 3. Long Term (Top 3 Importance + Relevance)
+        long_term = await self.get_long_term_memory(note.user_id, db, query_text=note.transcription_text)
         if not long_term: long_term = "No long-term knowledge."
 
         return (

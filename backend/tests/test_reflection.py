@@ -37,7 +37,7 @@ async def test_reflection_process(mock_db_session):
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session
          
          # Mock LLM Response
-         json_resp = '{"summary": "Prod", "identity_summary": "New Identity", "importance_score": 9.5}'
+         json_resp = '{"summary": "Пользователь работал над проектом X, много говорил о Y. В целом продуктивная неделя.", "identity_summary": "Деловой, лаконичный", "importance_score": 9.5}'
          mock_ai.get_chat_completion.return_value = json_resp
          mock_ai.clean_json_response.return_value = json_resp
          # Mock Embedding

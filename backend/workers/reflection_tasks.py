@@ -26,23 +26,21 @@ async def _process_reflection_async(user_id: str):
             return
 
         # 2. Build Prompt
-        # Combine texts safely
         notes_text = "\n\n".join([f"Date: {n.created_at}\nText: {n.transcription_text[:1000]}" for n in notes])
         
         prompt = (
-            "You are an AI assistant analyzing a user's life journals/notes. "
-            "1. Reflect on the key events, projects, and changes (Summary). "
-            "2. Identify the user's communication style, priorities, top jargon/keywords, and habits (Identity). "
-            "3. Evaluate the importance score of these events (0-10). "
-            "Return JSON: { 'summary': '...', 'identity_summary': 'User speaks casually, focuses on tech startup, uses jargon like ARR/Churn', 'importance_score': float }."
-            f"\n\nNotes:\n{notes_text}"
+            "Обобщи ключевые события, проекты, стиль общения, привычки, изменения пользователя. "
+            "Сделай краткий summary (200–400 слов). Оцени важность 0–10. "
+            "Также определи 'identity_summary' (стиль общения, приоритеты, ключевые слова). "
+            "Верни JSON: { 'summary': '...', 'identity_summary': '...', 'importance_score': float }."
+            f"\n\nПоследние заметки пользователя:\n{notes_text}"
         )
         
         # 3. Call DeepSeek
         try:
              import json
              response_text = await ai_service.get_chat_completion([
-                 {"role": "system", "content": "You are a helpful assistant. Return ONLY valid JSON."},
+                 {"role": "system", "content": "You are a helpful assistant. Return ONLY valid JSON in Russian."},
                  {"role": "user", "content": prompt}
              ])
              

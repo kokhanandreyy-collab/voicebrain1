@@ -78,15 +78,15 @@ class RagService:
         try:
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
-                 # Hybrid: Get 20 most similar, then pick top 5 most important
+                 # Hybrid: Get 50 most similar (broad search)
                  result = await db.execute(
                      select(LongTermMemory)
                      .where(LongTermMemory.user_id == user_id)
                      .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
-                     .limit(20)
+                     .limit(50)
                  )
                  candidates = result.scalars().all()
-                 # Sort by score DESC, then date DESC
+                 # Strict Re-ranking: Priority = Score (desc) -> Date (desc)
                  candidates.sort(key=lambda x: (x.importance_score or 0, x.created_at), reverse=True)
                  final = candidates[:5]
             else:

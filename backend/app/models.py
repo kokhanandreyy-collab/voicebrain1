@@ -144,6 +144,9 @@ class Note(Base):
     yandex_task_id = Column(String, nullable=True)
     twogis_url = Column(String, nullable=True)
     mapsme_url = Column(String, nullable=True)
+    
+    # Memory & Scoring
+    importance_score = Column(Float, default=5.0) # 0-10 scale
 
     # Agentic Workflow Metadata (Hidden fields for pipeline)
     ai_analysis = Column(JSON, nullable=True) # Full raw analysis

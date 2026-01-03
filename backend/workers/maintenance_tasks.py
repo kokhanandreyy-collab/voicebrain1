@@ -164,25 +164,43 @@ def cleanup_memory_task():
 
 async def _cleanup_memory_async() -> None:
     from app.models import LongTermMemory
-    logger.info("Starting long-term memory cleanup...")
+    logger.info("Starting memory cleanup strategy...")
     db: AsyncSession = AsyncSessionLocal()
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+        now = datetime.now(timezone.utc)
+        cutoff_notes = now - timedelta(days=90)
+        cutoff_ltm = now - timedelta(days=180)
         
-        # Delete low score memories older than 90 days
-        result = await db.execute(select(LongTermMemory).where(
-            LongTermMemory.importance_score < 4.0,
-            LongTermMemory.created_at < cutoff
+        # 1. Delete unimportant Notes (Score < 4, > 90 days)
+        # Note: importance_score is default 5.0, so this only deletes explicitly low-scored notes
+        res_notes = await db.execute(select(Note).where(
+            Note.importance_score < 4.0,
+            Note.created_at < cutoff_notes
         ))
-        memories = result.scalars().all()
+        notes_to_del = res_notes.scalars().all()
         
-        count = 0
-        for mem in memories:
-            await db.delete(mem)
-            count += 1
+        c_notes = 0
+        for n in notes_to_del:
+            if n.storage_key:
+                try: await storage_client.delete_file(n.storage_key)
+                except Exception: pass
+            await db.delete(n)
+            c_notes += 1
+            
+        # 2. Delete unimportant LongTermMemories (Score < 5, > 180 days)
+        res_mem = await db.execute(select(LongTermMemory).where(
+            LongTermMemory.importance_score < 5.0,
+            LongTermMemory.created_at < cutoff_ltm
+        ))
+        mems_to_del = res_mem.scalars().all()
+        
+        c_mems = 0
+        for m in mems_to_del:
+            await db.delete(m)
+            c_mems += 1
             
         await db.commit()
-        logger.info(f"Cleanup memory complete. Deleted {count} unimportant records.")
+        logger.info(f"Memory Cleanup: Deleted {c_notes} Notes and {c_mems} LTM entries.")
     except Exception as e:
         logger.error(f"Cleanup Memory Error: {e}")
     finally:

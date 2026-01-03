@@ -86,7 +86,6 @@ async def _process_reflection_async(user_id: str):
                      "Используй ID заметок, предоставленные ниже."
                      f"\n\nЗаметки:\n"
                  )
-                 # Note: My IDs are String/UUID, so I told DeepSeek to use str, but matching the format requested
                  notes_data = [{"id": n.id, "text": n.transcription_text[:200]} for n in notes]
                  rel_prompt += json.dumps(notes_data, ensure_ascii=False)
                  
@@ -95,17 +94,30 @@ async def _process_reflection_async(user_id: str):
                      {"role": "user", "content": rel_prompt}
                  ])
                  
-                 # The user might return just the list or a dict with 'relations'
-                 raw_data = json.loads(ai_service.clean_json_response(rel_resp))
+                 cleaned_resp = ai_service.clean_json_response(rel_resp)
+                 if not cleaned_resp:
+                     logger.warning("Empty AI response during graph extraction.")
+                     return
+
+                 try:
+                     raw_data = json.loads(cleaned_resp)
+                 except json.JSONDecodeError:
+                     logger.error(f"Failed to decode Graph JSON: {rel_resp[:200]}...")
+                     return
+
                  relations = raw_data if isinstance(raw_data, list) else raw_data.get("relations", [])
+                 logger.info(f"Graph extraction: generated {len(relations)} connections")
                  
                  from app.models import NoteRelation
+                 added_count = 0
                  for r in relations:
-                     # Map keys from the specific prompt request
                      n1 = r.get('note1_id') or r.get('id1')
                      n2 = r.get('note2_id') or r.get('id2')
                      r_type = r.get('type') or r.get('relation_type', 'related')
-                     r_strength = float(r.get('strength', 1.0))
+                     try:
+                         r_strength = float(r.get('strength', 1.0))
+                     except (TypeError, ValueError):
+                         r_strength = 1.0
                      
                      if n1 and n2:
                          nr = NoteRelation(
@@ -115,6 +127,10 @@ async def _process_reflection_async(user_id: str):
                              strength=r_strength
                          )
                          db.add(nr)
+                         added_count += 1
+                 
+                 if added_count > 0:
+                     logger.debug(f"Saved {added_count} new note relations to DB.")
                          
              except Exception as rel_err:
                  logger.error(f"Graph extraction failed: {rel_err}")

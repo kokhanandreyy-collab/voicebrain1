@@ -110,10 +110,16 @@ class AnalyzeCore:
         # Inject Identity Core
         if user and user.identity_summary:
             user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
+
+        # Adaptive Learning Instruction
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'action_items' like 'VoiceBrain: Is P0 High Priority?'."
             
         target_lang = user.target_language if user else "Original"
         
         hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
+        
+        # Log Context Size for Monitoring
+        logger.info(f"RAG Context Tokens (Est): {int(len(hierarchical_context)/4)} chars: {len(hierarchical_context)}")
         
         # 2. AI Analysis
         analysis = await ai_service.analyze_text(

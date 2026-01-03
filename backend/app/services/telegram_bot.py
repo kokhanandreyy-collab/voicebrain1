@@ -99,6 +99,43 @@ async def handle_voice(message: Message):
         process_transcribe.delay(new_note.id)
         
         # We don't reply more here, the worker will send a follow-up if telegram_chat_id is set.
+        
+@dp.message(F.text & ~F.text.startswith("/"))
+async def handle_text(message: Message):
+    """Handle text messages (e.g. replies to clarification questions)."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.telegram_chat_id == str(message.chat.id)))
+        user = result.scalars().first()
+        if not user:
+            await message.answer("⚠️ Not linked.")
+            return
+
+        # Create Text Note
+        new_note = Note(
+            user_id=user.id,
+            title="Text Input",
+            status="PROCESSING",
+            transcription_text=message.text, # Direct text
+            is_audio_note=False,
+            summary="Processing text..."
+        )
+        db.add(new_note)
+        await db.commit()
+        await db.refresh(new_note)
+
+        # Trigger pipeline
+        from workers.analyze_tasks import process_analyze
+        # We skip 'transcribe' task since we have text. Directly analyze.
+        # But wait, pipeline usually orchestrates transcription.
+        # Pipeline checks: if note.transcription_text is present, skips transcription.
+        # So we can call process_analyze (which calls pipeline).
+        # But process_analyze is for analyze phase? Or full pipeline?
+        # workers/analyze_tasks.py logic: calls pipeline.process(note_id).
+        # pipeline.process handles skipping transcription if text exists.
+        
+        process_analyze.delay(new_note.id)
+        
+        await message.answer("📝 Processing your reply...")
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: Message):

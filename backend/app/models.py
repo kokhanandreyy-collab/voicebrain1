@@ -47,6 +47,7 @@ class User(Base):
     bio = Column(Text, nullable=True) # User context for AI
     identity_summary = Column(Text, default="") # Auto-generated identity core
     target_language = Column(String, default='Original')
+    adaptive_preferences = Column(JSON, default={}) # Key-value preferences (e.g. "priority_p0": "Critical")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

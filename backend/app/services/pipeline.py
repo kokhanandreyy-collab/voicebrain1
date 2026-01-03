@@ -135,6 +135,14 @@ class NotePipeline:
                     safe_title = escape_markdown(note.title or "Untitled")
                     safe_intent = escape_markdown((note.ai_analysis or {}).get("intent", "note"))
                     msg = f"✅ **Saved!**\nTitle: {safe_title}\nIntent: {safe_intent}"
+
+                    # Check for adaptive clarification
+                    if note.action_items:
+                        for item in note.action_items:
+                            if "Clarification Needed:" in str(item):
+                                question = str(item).replace("Clarification Needed:", "").strip()
+                                msg += f"\n\n❓ **Question:** {escape_markdown(question)}\n_Reply to answer_"
+                                break
                     await bot.send_message(chat_id=user.telegram_chat_id, text=msg, parse_mode="Markdown")
                 except Exception as e: logger.warning(f"TG notify failed: {e}")
 

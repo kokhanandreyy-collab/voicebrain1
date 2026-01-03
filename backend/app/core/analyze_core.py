@@ -5,7 +5,7 @@ from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai_service import ai_service
-from app.models import Note, User, NoteEmbedding, LongTermSummary, NoteRelation
+from app.models import Note, User, NoteEmbedding, LongTermMemory, NoteRelation
 from app.core.types import AIAnalysisPack
 
 class RagService:
@@ -74,9 +74,9 @@ class RagService:
         """Fetch top 3 high-importance long-term summaries."""
         try:
             result = await db.execute(
-                select(LongTermSummary)
-                .where(LongTermSummary.user_id == user_id)
-                .order_by(desc(LongTermSummary.importance_score))
+                select(LongTermMemory)
+                .where(LongTermMemory.user_id == user_id)
+                .order_by(desc(LongTermMemory.importance_score))
                 .limit(3)
             )
             summaries = list(result.scalars().all())
@@ -105,14 +105,20 @@ class AnalyzeCore:
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save
         """
         # 1. Context
-        user_bio = user.bio if user else ""
+        user_bio = (user.bio or "") if user else ""
         
         # Inject Identity Core
         if user and user.identity_summary:
             user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
+            
+        # Inject Adaptive Preferences
+        if user and user.adaptive_preferences:
+            import json
+            prefs_str = json.dumps(user.adaptive_preferences, indent=2)
+            user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
 
         # Adaptive Learning Instruction
-        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'action_items' like 'VoiceBrain: Is P0 High Priority?'."
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'clarifying_question' field."
             
         target_lang = user.target_language if user else "Original"
         
@@ -137,13 +143,28 @@ class AnalyzeCore:
         if identity_update and user:
             logger.info(f"Adaptive Learning: Updating identity for user {user.id}")
             current_id = user.identity_summary or ""
-            # Simple append (a smarter way would be to create a 'Memory' object or structured Profile update)
-            # For now, we append it so the next context injects it.
             user.identity_summary = (current_id + f"\n- {identity_update}").strip()
-            # Note: Commit happens in pipeline caller usually, but pipeline commits after _run_analyze_stage. 
-            # We are passing 'user' object which is attached to session if loaded correctly.
-            # Pipeline loads user via: user_res.scalars().first().
-            # So `user` is attached to `db` session. Committing in pipeline will save this.
+            
+        # 3.2 Adaptive Learning: Process Structured Preference Update
+        adaptive_update = analysis.get("adaptive_update")
+        if adaptive_update and isinstance(adaptive_update, dict) and user:
+            logger.info(f"Adaptive Learning: Updating preferences for user {user.id}")
+            current_prefs = dict(user.adaptive_preferences or {})
+            current_prefs.update(adaptive_update)
+            user.adaptive_preferences = current_prefs
+            # Force update for JSON/SQLAlchemy
+            from sqlalchemy import update
+            await db.execute(update(User).where(User.id == user.id).values(adaptive_preferences=current_prefs))
+            
+        # 3.3 Clarifying Question Handling
+        # If 'clarifying_question' exists, we put it in action_items so the user sees it immediately
+        clarifying_question = analysis.get("clarifying_question")
+        if clarifying_question:
+            # Prepend to action items with distinct marker
+            if not note.action_items: note.action_items = []
+            note.action_items = [f"Clarification Needed: {clarifying_question}"] + list(note.action_items)
+            # Ensure it is saved back
+            note.action_items = list(note.action_items)
         
         # 4. Embed
         await rag_service.embed_note(note, db)

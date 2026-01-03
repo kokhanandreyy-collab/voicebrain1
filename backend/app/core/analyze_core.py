@@ -106,8 +106,10 @@ class AnalyzeCore:
         """
         # 1. Context
         user_bio = user.bio if user else ""
-        if user and getattr(user, "identity_summary", None):
-            user_bio += f"\n\nUser Identity Core: {user.identity_summary}"
+        
+        # Inject Identity Core
+        if user and user.identity_summary:
+            user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
             
         target_lang = user.target_language if user else "Original"
         

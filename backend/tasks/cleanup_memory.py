@@ -1,56 +1,54 @@
 from datetime import datetime, timedelta, timezone
+from celery import shared_task
+from sqlalchemy import delete
 from loguru import logger
-from sqlalchemy.future import select
-from asgiref.sync import async_to_sync
+import asyncio
 
-from app.celery_app import celery
+# Using absolute paths as per project structure
 from app.models import Note, LongTermMemory
-from infrastructure.database import AsyncSessionLocal
-from infrastructure.storage import storage_client
+from infrastructure.database import AsyncSessionLocal as async_session
 
-async def _cleanup_memory_async():
-    logger.info("Starting memory cleanup (Task)...")
-    async with AsyncSessionLocal() as db:
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff_notes = now - timedelta(days=90)
-            cutoff_ltm = now - timedelta(days=180)
-            
-            # 1. Notes (Score < 4, > 90 days)
-            res_notes = await db.execute(select(Note).where(
-                Note.importance_score < 4.0,
-                Note.created_at < cutoff_notes
-            ))
-            notes_to_del = res_notes.scalars().all()
-            
-            c_notes = 0
-            for n in notes_to_del:
-                if n.storage_key:
-                    try: await storage_client.delete_file(n.storage_key)
-                    except Exception: pass
-                db.delete(n)
-                c_notes += 1
-            
-            # 2. LongTermMemory (Score < 5, > 180 days)
-            res_mems = await db.execute(select(LongTermMemory).where(
-                LongTermMemory.importance_score < 5.0,
-                LongTermMemory.created_at < cutoff_ltm
-            ))
-            mems_to_del = res_mems.scalars().all()
-            
-            c_mems = 0
-            for m in mems_to_del:
-                db.delete(m) # Sync
-                c_mems += 1
-            
-            await db.commit()
-            logger.info(f"Memory Cleanup: Deleted {c_notes} Notes, {c_mems} LongTermMemories.")
-            
-        except Exception as e:
-            logger.error(f"Cleanup failed: {e}")
-            print(f"DEBUG EXCEPTION: {e}")
-            await db.rollback()
-
-@celery.task(name="cleanup_memory")
+@shared_task(name="cleanup_memory")
 def cleanup_memory():
-    async_to_sync(_cleanup_memory_async)()
+    async def run_cleanup():
+        # Using context manager for safe session handling
+        async with async_session() as session:
+            try:
+                # Use timezone-aware UTC for consistency
+                now = datetime.now(timezone.utc)
+                ninety_days_ago = now - timedelta(days=90)
+                one_eighty_days_ago = now - timedelta(days=180)
+
+                # 1. Delete Note with score < 4 older than 90 days
+                deleted_notes_res = await session.execute(
+                    delete(Note).where(
+                        Note.importance_score < 4,
+                        Note.created_at < ninety_days_ago
+                    )
+                )
+                notes_count = deleted_notes_res.rowcount
+
+                # 2. Delete LongTermMemory with score < 5 older than 180 days
+                deleted_ltm_res = await session.execute(
+                    delete(LongTermMemory).where(
+                        LongTermMemory.importance_score < 5,
+                        LongTermMemory.created_at < one_eighty_days_ago
+                    )
+                )
+                ltm_count = deleted_ltm_res.rowcount
+
+                await session.commit()
+                logger.info(f"Cleanup completed: deleted {notes_count} notes and {ltm_count} longterm memories")
+            except Exception as e:
+                logger.error(f"Cleanup task failed: {e}")
+                await session.rollback()
+                raise e
+
+    # Execute the async core in the current thread's event loop
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # If we are in a running loop (e.g. some workers), use create_task or run_coroutine_threadsafe
+        # But for basic Celery worker threading, asyncio.run is usually safest or direct loop run
+        loop.run_until_complete(run_cleanup())
+    else:
+        asyncio.run(run_cleanup())

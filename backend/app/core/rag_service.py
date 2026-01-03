@@ -91,12 +91,12 @@ class RagService:
                  candidates.sort(key=lambda x: (x.importance_score or 0, x.created_at), reverse=True)
                  final = candidates[:5]
             else:
-                 result = await db.execute(
-                     select(LongTermMemory)
-                     .where(LongTermMemory.user_id == user_id)
-                     .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
-                     .limit(5)
-                 )
+                  result = await db.execute(
+                      select(LongTermMemory)
+                      .where(LongTermMemory.user_id == user_id)
+                      .order_by(LongTermMemory.importance_score.desc(), LongTermMemory.created_at.desc())
+                      .limit(5)
+                  )
                  final = result.scalars().all()
 
             parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]

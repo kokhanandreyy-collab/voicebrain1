@@ -63,10 +63,11 @@ class VoiceBrainAPIClient:
         resp = await self._request("POST", "/notes/upload", files=files)
         return resp.json()
     
-    async def upload_text_note(self, text: str, title: Optional[str] = None) -> Dict[str, Any]:
+    async def upload_text_note(self, text: str, title: Optional[str] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         resp = await self._request("POST", "/notes/create-text", json={
             "transcription_text": text,
-            "title": title
+            "title": title,
+            "tags": tags or []
         })
         return resp.json()
 

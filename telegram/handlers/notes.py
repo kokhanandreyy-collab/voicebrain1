@@ -11,6 +11,7 @@ router = Router()
 class NoteStates(StatesGroup):
     waiting_for_text = State()
     waiting_for_title = State()
+    waiting_for_tags = State()
 
 @router.message(Command("notes"))
 async def cmd_list_notes(message: types.Message):
@@ -157,17 +158,28 @@ async def process_new_note_text(message: types.Message, state: FSMContext):
 
 @router.message(NoteStates.waiting_for_title)
 async def process_new_note_title(message: types.Message, state: FSMContext):
+    await state.update_data(title=message.text if message.text != "/skip" else None)
+    await message.answer("🏷️ Almost done! Enter some tags (comma separated) or type /skip:")
+    await state.set_state(NoteStates.waiting_for_tags)
+
+@router.message(NoteStates.waiting_for_tags)
+async def process_new_note_tags(message: types.Message, state: FSMContext):
     from telegram.bot import get_client
     data = await state.get_data()
-    title = message.text if message.text != "/skip" else None
-    api_key = get_api_key(message.chat.id)
-
-    status_msg = await message.answer("🧠 Processing your text note...")
+    tags_raw = message.text if message.text != "/skip" else ""
+    tags = [t.strip() for t in tags_raw.split(",")] if tags_raw else []
     
+    status_msg = await message.answer("🧠 Processing your text note...")
+    await message.bot.send_chat_action(message.chat.id, "upload_document")
+
     client = get_client(message.chat.id)
     try:
-        # Use the NEW shared client method
-        await client.upload_text_note(text=data['text'], title=title)
+        # Pass tags to backend
+        await client.upload_text_note(
+            text=data['text'], 
+            title=data.get('title'),
+            tags=tags
+        )
         
         await status_msg.edit_text(
             "✅ *Note Saved\!*\n\n"

@@ -9,7 +9,7 @@ This document tracks the functional parity between the VoiceBrain React Web Appl
 | Text Note Creation | ✅ | ✅ | TG uses `/new_note` FSM flow |
 | AI Summary | ✅ | ✅ | Rich Markdown format |
 | Action Items | ✅ | ✅ | Extracted automatically |
-| Tags Management | ✅ | ⚠️ | Partial (View/Delete work, manual add in progress) |
+| Tags Management | ✅ | ✅ | Full FSM support during creation |
 | Semantic Search | ✅ | ✅ | via `/ask` command |
 | Adaptive Memory | ✅ | ✅ | Full clarification loop with editing |
 

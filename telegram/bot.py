@@ -65,6 +65,15 @@ dp = Dispatcher(storage=MemoryStorage())
 from telegram.middleware import ThrottlingMiddleware
 dp.message.middleware(ThrottlingMiddleware(slow_mode_delay=1.0))
 
+@dp.error()
+async def error_handler(event: types.ErrorEvent):
+    logger.error(f"Critical error: {event.exception}")
+    try:
+        if event.update.message:
+            await event.update.message.answer("⚠️ *Oops\!* Something went wrong on my brain\. Please try again later\.", parse_mode="MarkdownV2")
+    except Exception:
+        pass
+
 async def main():
     if not TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN not found in environment variables!")

@@ -55,7 +55,7 @@ class NoteBase(BaseModel):
     transcription_text: Optional[str] = None
 
 class NoteCreate(NoteBase):
-    pass
+    tags: Optional[List[str]] = []
 
 class NoteUpdate(BaseModel):
     title: Optional[str] = None

@@ -73,13 +73,15 @@ async def cmd_ask(message: types.Message, command: CommandObject):
             
             # Update message every 10 chunks to avoid rate limiting
             if chunk_count % 10 == 0:
+                # Keep typing action active
+                await message.bot.send_chat_action(message.chat.id, "typing")
                 try:
                     await status_msg.edit_text(
                         f"🤖 *AI Answer:*\n\n{escape_md(full_answer)}\|",
                         parse_mode="MarkdownV2"
                     )
                 except Exception:
-                    pass # Ignore 'message not modified' or similar errors
+                    pass 
 
         # Final edit
         await status_msg.edit_text(

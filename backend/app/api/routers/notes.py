@@ -202,6 +202,7 @@ async def create_text_note(
         user_id=current_user.id,
         title=req.title or "New Text Note",
         transcription_text=req.transcription_text,
+        tags=req.tags or [],
         status="PENDING",
         audio_url="" # No audio for text notes
     )

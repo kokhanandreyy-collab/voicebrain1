@@ -118,7 +118,7 @@ class AnalyzeCore:
             user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
 
         # Adaptive Learning Instruction
-        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'clarifying_question' field."
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
             
         target_lang = user.target_language if user else "Original"
         
@@ -157,12 +157,12 @@ class AnalyzeCore:
             await db.execute(update(User).where(User.id == user.id).values(adaptive_preferences=current_prefs))
             
         # 3.3 Clarifying Question Handling
-        # If 'clarifying_question' exists, we put it in action_items so the user sees it immediately
-        clarifying_question = analysis.get("clarifying_question")
-        if clarifying_question:
+        # If 'ask_clarification' exists, we put it in action_items so the user sees it immediately
+        ask_clarification = analysis.get("ask_clarification")
+        if ask_clarification:
             # Prepend to action items with distinct marker
             if not note.action_items: note.action_items = []
-            note.action_items = [f"Clarification Needed: {clarifying_question}"] + list(note.action_items)
+            note.action_items = [f"Clarification Needed: {ask_clarification}"] + list(note.action_items)
             # Ensure it is saved back
             note.action_items = list(note.action_items)
         

@@ -23,7 +23,7 @@ async def test_adaptive_memory_flow(mock_db_session):
     mock_ai.analyze_text = AsyncMock(return_value={
         "title": "Title",
         "adaptive_update": {"new_key": "new_val"},
-        "clarifying_question": "What is X?"
+        "ask_clarification": "What is X?"
     })
     
     # Needs rag_service mock too

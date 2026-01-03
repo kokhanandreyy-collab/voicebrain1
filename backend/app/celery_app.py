@@ -13,7 +13,8 @@ celery = Celery(
         "workers.analyze_tasks",
         "workers.sync_tasks",
         "workers.maintenance_tasks",
-        "workers.reflection_tasks"
+        "workers.reflection_tasks",
+        "tasks.cleanup_memory"
     ]
 )
 

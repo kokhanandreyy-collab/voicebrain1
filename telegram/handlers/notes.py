@@ -33,17 +33,18 @@ async def cmd_list_notes(message: types.Message):
                     await message.answer("📝 You don't have any notes yet.")
                     return
 
+                from telegram.utils.formatting import escape_md
                 builder = InlineKeyboardBuilder()
                 text = "📂 *Your Recent Notes:*\n\n"
                 for note in notes:
                     title = note.get("title") or "Untitled"
                     note_id = note.get("id")
                     created_at = note.get("created_at", "").split("T")[0]
-                    text += f"• *{title}* ({created_at})\n"
+                    text += f"• *{escape_md(title)}* \({escape_md(created_at)}\)\n"
                     builder.button(text=f"👁️ {title[:20]}...", callback_data=f"view_note:{note_id}")
                 
                 builder.adjust(1)
-                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
             else:
                 await message.answer(f"❌ Error fetching notes: {response.status_code}")
         except Exception as e:
@@ -54,6 +55,7 @@ async def cmd_list_notes(message: types.Message):
 async def view_note_callback(callback: types.CallbackQuery):
     note_id = callback.data.split(":")[1]
     api_key = get_api_key(callback.message.chat.id)
+    from telegram.utils.formatting import escape_md, format_note_rich, format_clarification_block
     
     async with httpx.AsyncClient() as client:
         try:
@@ -64,20 +66,9 @@ async def view_note_callback(callback: types.CallbackQuery):
             )
             if response.status_code == 200:
                 note = response.json()
-                title = note.get("title") or "Untitled"
-                summary = note.get("summary") or "No summary available."
-                action_items = note.get("action_items") or []
-                status = note.get("status")
-                created_at = note.get("created_at", "").replace("T", " ")
                 
-                text = f"📑 *{title}*\n"
-                text += f"🗓️ {created_at} | 🏷️ {status}\n\n"
-                text += f"📝 *Summary:*\n{summary}\n\n"
-                
-                if action_items:
-                    text += "✅ *Action Items:*\n"
-                    for item in action_items:
-                        text += f"• {item}\n"
+                # Use rich formatter for the main body
+                text = format_note_rich(note)
                 
                 builder = InlineKeyboardBuilder()
                 builder.button(text="🗑️ Delete", callback_data=f"delete_note:{note_id}")
@@ -85,7 +76,24 @@ async def view_note_callback(callback: types.CallbackQuery):
                 builder.button(text="🔙 Back", callback_data="list_notes")
                 builder.adjust(2)
 
-                await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+                await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
+
+                # Scan for clarifications in action items
+                action_items = note.get("action_items") or []
+                for item in action_items:
+                    if "Clarification Needed:" in str(item):
+                        question = str(item).replace("Clarification Needed:", "").strip()
+                        clarify_text = format_clarification_block(question)
+                        
+                        clarify_builder = InlineKeyboardBuilder()
+                        clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id}")
+                        
+                        await callback.message.answer(
+                            clarify_text, 
+                            reply_markup=clarify_builder.as_markup(), 
+                            parse_mode="MarkdownV2"
+                        )
+
             else:
                 await callback.answer("❌ Note not found or access denied.", show_alert=True)
         except Exception as e:

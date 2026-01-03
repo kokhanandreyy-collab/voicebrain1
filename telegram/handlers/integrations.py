@@ -24,17 +24,18 @@ async def cmd_integrations(message: types.Message):
             
             if response.status_code == 200:
                 integrations = response.json()
+                from telegram.utils.formatting import escape_md
                 
                 text = "🔌 *Your Integrations:*\n\n"
                 if not integrations:
-                    text += "No integrations connected yet. Go to settings on web to link Notion, Slack, etc."
+                    text += "No integrations connected yet\. Go to settings on web to link Notion, Slack, etc\."
                 else:
                     for item in integrations:
                         provider = item.get("provider")
                         status = item.get("status", "active")
-                        text += f"• *{provider.capitalize()}*: {status.upper()}\n"
+                        text += f"• *{escape_md(provider.capitalize())}*: {escape_md(status.upper())}\n"
                 
-                text += "\n_Tap a button below to trigger manual sync for most recent notes._"
+                text += "\n_Tap a button below to trigger manual sync for most recent notes\._"
                 
                 builder = InlineKeyboardBuilder()
                 # Common ones for quick sync
@@ -44,7 +45,7 @@ async def cmd_integrations(message: types.Message):
                         builder.button(text=f"🔄 Sync {provider.capitalize()}", callback_data=f"sync_all:{provider}")
                 
                 builder.adjust(2)
-                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+                await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
             else:
                 await message.answer(f"❌ Error: {response.status_code}")
         except Exception as e:

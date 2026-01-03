@@ -14,33 +14,34 @@ async def cmd_start(message: types.Message, command: CommandObject):
         api_key = command.args
         set_api_key(message.chat.id, api_key)
         await message.answer(
-            f"✅ **Account linked!**\n\n"
-            "You can now send voice notes to record them or just talk to me using 'Ask AI' mode.",
-            parse_mode="Markdown"
+            f"✅ *Account linked\!*\n\n"
+            "You can now send voice notes to record them or just talk to me using 'Ask AI' mode\.",
+            parse_mode="MarkdownV2"
         )
     else:
         await message.answer(
-            "👋 **Welcome to VoiceBrain!**\n\n"
+            "👋 *Welcome to VoiceBrain\!*\n\n"
             "To get started, please link your account by clicking the link in your web settings "
-            "or use `/start YOUR_API_KEY`.\n\n"
+            "or use `/start YOUR_API_KEY`\.\n\n"
             "Once linked, you can:\n"
             "🎙️ Send voice messages\n"
             "🧠 Ask questions about your notes\n"
             "🛠️ Manage your integrations",
-            parse_mode="Markdown"
+            parse_mode="MarkdownV2"
         )
 
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer(
-        "📖 **VoiceBrain Bot Help**\n\n"
+        "📖 *VoiceBrain Bot Help*\n\n"
         "Commands:\n"
-        "/start - Start & link account\n"
-        "/ask <query> - Ask AI about your notes\n"
-        "/stats - View your usage stats\n"
-        "/settings - Bot settings\n\n"
-        "Just send a voice message to record a new note!",
-        parse_mode="Markdown"
+        "/start \- Start & link account\n"
+        "/ask \<query\> \- Ask AI about your notes\n"
+        "/notes \- List recent notes\n"
+        "/integrations \- Manage integrations\n"
+        "/settings \- Bot settings\n\n"
+        "Just send a voice message to record a new note\!",
+        parse_mode="MarkdownV2"
     )
 
 @router.message(Command("ask"))
@@ -75,15 +76,25 @@ async def cmd_ask(message: types.Message, command: CommandObject):
 
                 text = f"🤖 *AI Answer:*\n\n{escape_md(answer)}"
                 
-                # If there's a clarification, add it with a special marker
-                if clarification:
-                    text += f"\n\n❓ *Clarification Needed:*\n_{escape_md(clarification)}_\n\n_Reply to this message to answer\!_"
-                    
                 builder = InlineKeyboardBuilder()
                 if note_id:
                     builder.button(text="👁️ View Details", callback_data=f"view_note:{note_id}")
                 
                 await message.answer(text, reply_markup=builder.as_markup(), parse_mode="MarkdownV2")
+
+                # If there's a clarification, send it as a separate highlighted message
+                if clarification:
+                    from telegram.utils.formatting import format_clarification_block
+                    clarify_text = format_clarification_block(clarification)
+                    
+                    clarify_builder = InlineKeyboardBuilder()
+                    clarify_builder.button(text="Answer 📝", callback_data=f"answer_clarify:{note_id or 'none'}")
+                    
+                    await message.answer(
+                        clarify_text, 
+                        reply_markup=clarify_builder.as_markup(), 
+                        parse_mode="MarkdownV2"
+                    )
             else:
                 await message.answer(f"❌ Error: {response.text}")
         except Exception as e:

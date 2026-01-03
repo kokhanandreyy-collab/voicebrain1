@@ -36,3 +36,19 @@ def format_note_rich(note: dict) -> str:
         text += "🏷️ " + " ".join([f"#{escape_md(t)}" for t in tags])
         
     return text
+
+def format_clarification_block(question: str, answer: str = None, resolved: bool = False) -> str:
+    """
+    Formats a clarification block with status indicators.
+    """
+    if resolved:
+        text = f"✅ *Clarification Resolved*\n"
+        text += f"❓ *Q:* _{escape_md(question)}_\n"
+        text += f"💡 *A:* {escape_md(answer)}\n"
+        text += f"\n_Adaptive Memory Updated_ ✨"
+    else:
+        text = f"🟠 *Clarification Needed*\n"
+        text += f"📜 {escape_md(question)}\n\n"
+        text += f"_Reply to this message or tap the button below to answer\._"
+        
+    return text

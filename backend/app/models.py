@@ -135,7 +135,7 @@ class Note(Base):
     processing_step = Column(String, nullable=True) # For UI progress (e.g. "Transcribing...")
     processing_error = Column(Text, nullable=True)
     
-    # UI Metadata
+    is_audio_note = Column(Boolean, default=True) # Distinguish between voice and text-only/system notes
     mood = Column(String, nullable=True)
     google_maps_url = Column(String, nullable=True)
     yandex_maps_url = Column(String, nullable=True)
@@ -147,9 +147,6 @@ class Note(Base):
     twogis_url = Column(String, nullable=True)
     mapsme_url = Column(String, nullable=True)
     
-    # Memory & Scoring
-    importance_score = Column(Float, default=5.0) # 0-10 scale
-
     # Agentic Workflow Metadata (Hidden fields for pipeline)
     ai_analysis = Column(JSON, nullable=True) # Full raw analysis
     cluster_id = Column(String, nullable=True) # For topic clustering

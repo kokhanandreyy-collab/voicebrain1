@@ -6,7 +6,7 @@ from typing import List
 
 from infrastructure.database import get_db
 from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
-from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote, ReplyRequest
+from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote, ReplyRequest, NoteCreate
 from pydantic import BaseModel
 from app.services.ai_service import ai_service
 from app.api.dependencies import get_current_user
@@ -269,10 +269,16 @@ async def ask_ai(
     # 1. Generate Embedding for Question
     question_embedding = await ai_service.generate_embedding(req.question)
     
+    from app.models import NoteEmbedding
     # 2. Hybrid Search
     # 2.1 Semantic Search (Vector)
-    query_sem = select(Note).where(Note.user_id == current_user.id)
-    query_sem = query_sem.order_by(Note.embedding.cosine_distance(question_embedding)).limit(10)
+    query_sem = (
+        select(Note)
+        .join(NoteEmbedding)
+        .where(Note.user_id == current_user.id)
+        .order_by(NoteEmbedding.embedding.cosine_distance(question_embedding))
+        .limit(10)
+    )
     
     result_sem = await db.execute(query_sem)
     semantic_notes = result_sem.scalars().all()
@@ -337,9 +343,15 @@ async def ask_ai_stream(
     db: AsyncSession = Depends(get_db)
 ):
     # Reuse RAG logic
+    from app.models import NoteEmbedding
     question_embedding = await ai_service.generate_embedding(req.question)
-    query_sem = select(Note).where(Note.user_id == current_user.id)
-    query_sem = query_sem.order_by(Note.embedding.cosine_distance(question_embedding)).limit(10)
+    query_sem = (
+        select(Note)
+        .join(NoteEmbedding)
+        .where(Note.user_id == current_user.id)
+        .order_by(NoteEmbedding.embedding.cosine_distance(question_embedding))
+        .limit(10)
+    )
     result_sem = await db.execute(query_sem)
     relevant_notes = result_sem.scalars().all()
 
@@ -470,9 +482,7 @@ async def delete_note(
         # Legacy fallback
         await storage_client.delete_file(note.audio_url)
     
-    await db.delete(note)
-    await db.commit()
-    await db.delete(note)
+    db.delete(note)
     await db.commit()
     return None
 

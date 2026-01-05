@@ -1,0 +1,208 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\User\Documents\GitHub\voicebrain1\backend
+configfile: pytest.ini
+plugins: anyio-3.7.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\test_notes_router.py F                                             [100%]
+
+================================== FAILURES ===================================
+____________________________ test_create_text_note ____________________________
+
+client = <httpx.AsyncClient object at 0x00000212A4765D30>
+db_session = <AsyncMock id='2279091491504'>
+test_user = <app.models.User object at 0x00000212A4764830>
+
+    @pytest.mark.asyncio
+    async def test_create_text_note(client, db_session, test_user):
+        payload = {
+            "title": "Test Title",
+            "transcription_text": "This is a test note content.",
+            "tags": ["test", "fastapi"]
+        }
+    
+        # Mock note for response
+        note = Note(
+            id="new-note-uuid",
+            user_id=test_user.id,
+            title=payload["title"],
+            transcription_text=payload["transcription_text"],
+            tags=payload["tags"],
+            created_at=datetime.now(timezone.utc),
+            audio_url="",
+            status="PENDING"
+        )
+        db_session.add = MagicMock()
+        # Mock the return value of create_text_note's final return
+        # Actually client.post will return the real thing.
+        # But db.refresh(new_note) must not crash.
+    
+>       response = await client.post("/notes/create-text", json=payload)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_notes_router.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:1135: in __call__
+    await super().__call__(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\middleware\auth.py:35: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\cors.py:85: in __call__
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py:119: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py:105: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py:448: in app
+    content = await serialize_response(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def serialize_response(
+        *,
+        field: Optional[ModelField] = None,
+        response_content: Any,
+        include: Optional[IncEx] = None,
+        exclude: Optional[IncEx] = None,
+        by_alias: bool = True,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+        is_coroutine: bool = True,
+        endpoint_ctx: Optional[EndpointContext] = None,
+    ) -> Any:
+        if field:
+            errors = []
+            if not hasattr(field, "serialize"):
+                # pydantic v1
+                response_content = _prepare_response_content(
+                    response_content,
+                    exclude_unset=exclude_unset,
+                    exclude_defaults=exclude_defaults,
+                    exclude_none=exclude_none,
+                )
+            if is_coroutine:
+                value, errors_ = field.validate(response_content, {}, loc=("response",))
+            else:
+                value, errors_ = await run_in_threadpool(
+                    field.validate, response_content, {}, loc=("response",)
+                )
+            if isinstance(errors_, list):
+                errors.extend(errors_)
+            elif errors_:
+                errors.append(errors_)
+            if errors:
+                ctx = endpoint_ctx or EndpointContext()
+>               raise ResponseValidationError(
+                    errors=_normalize_errors(errors),
+                    body=response_content,
+                    endpoint_ctx=ctx,
+                )
+E               fastapi.exceptions.ResponseValidationError: 3 validation errors:
+E                 {'type': 'string_type', 'loc': ('response', 'id'), 'msg': 'Input should be a valid string', 'input': None}
+E                 {'type': 'list_type', 'loc': ('response', 'action_items'), 'msg': 'Input should be a valid list', 'input': None}
+E                 {'type': 'datetime_type', 'loc': ('response', 'created_at'), 'msg': 'Input should be a valid datetime', 'input': None}
+E               
+E                 File "C:\Users\User\Documents\GitHub\voicebrain1\backend\app\api\routers\notes.py", line 191, in create_text_note
+E                   POST /api/v1/notes/create-text
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py:274: ResponseValidationError
+============================== warnings summary ===============================
+infrastructure\config.py:5
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\infrastructure\config.py:5: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\main.py:30
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:30: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:43
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:43: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+app\schemas.py:28
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(UserBase):
+
+app\schemas.py:78
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:78: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class NoteResponse(NoteBase):
+
+app\schemas.py:109
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:109: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class IntegrationResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_notes_router.py::test_create_text_note - fastapi.exceptions...
+======================== 1 failed, 8 warnings in 0.73s ========================

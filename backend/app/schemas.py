@@ -77,7 +77,8 @@ class IntegrationStatus(BaseModel):
 
 class NoteResponse(NoteBase):
     id: str
-    audio_url: str
+    user_id: str
+    audio_url: Optional[str] = None
     summary: Optional[str] = None
     action_items: List[str] = []
     tags: List[str] = []

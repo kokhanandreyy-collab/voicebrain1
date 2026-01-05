@@ -1,0 +1,154 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\User\Documents\GitHub\voicebrain1\backend
+configfile: pytest.ini
+plugins: anyio-3.7.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests\test_pipeline.py F.                                                [100%]
+
+================================== FAILURES ===================================
+___________________________ test_pipeline_full_flow ___________________________
+
+db_session = <AsyncMock id='2089459655280'>
+test_user = <app.models.User object at 0x000001E67D895550>
+mock_celery = {'analyze': <MagicMock name='mock.task()().delay' id='2089458808352'>, 'reflect': <MagicMock id='2089458809024'>, 'transcribe': <MagicMock name='mock.task()().delay' id='2089458808688'>}
+
+    @pytest.mark.asyncio
+    async def test_pipeline_full_flow(db_session, test_user, mock_celery):
+        # Setup Note
+        note = Note(
+            id="note-uuid",
+            user_id=test_user.id,
+            title="Initial Title",
+            status=NoteStatus.PENDING,
+            audio_url="http://mock.com/audio.ogg",
+            created_at=datetime.now(timezone.utc)
+        )
+        db_session.add(note)
+        await db_session.commit()
+        await db_session.refresh(note)
+    
+        # Configure mock
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = note
+        db_session.execute = AsyncMock(return_value=mock_result)
+    
+        # Mock stages
+>       with patch("app.core.audio.audio_processor:process_audio", AsyncMock(return_value=("Transcribed text", 10.0))), \
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             patch("app.core.analyze_core.analyze_core:analyze_step", AsyncMock()) as mock_analyze, \
+             patch("app.core.sync_service.sync_service:sync_note", AsyncMock()) as mock_sync, \
+             patch("app.core.bot.bot:send_message", AsyncMock()):
+
+tests\test_pipeline.py:28: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x000001E67D3D3B10>
+
+    def __enter__(self):
+        """Perform the patch."""
+        if self.is_started:
+            raise RuntimeError("Patch is already started")
+    
+        new, spec, spec_set = self.new, self.spec, self.spec_set
+        autospec, kwargs = self.autospec, self.kwargs
+        new_callable = self.new_callable
+        self.target = self.getter()
+    
+        # normalise False to None
+        if spec is False:
+            spec = None
+        if spec_set is False:
+            spec_set = None
+        if autospec is False:
+            autospec = None
+    
+        if spec is not None and autospec is not None:
+            raise TypeError("Can't specify spec and autospec")
+        if ((spec is not None or autospec is not None) and
+            spec_set not in (True, None)):
+            raise TypeError("Can't provide explicit spec_set *and* spec or autospec")
+    
+>       original, local = self.get_original()
+                          ^^^^^^^^^^^^^^^^^^^
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1495: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x000001E67D3D3B10>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.core.audio' from 'C:\\Users\\User\\Documents\\GitHub\\voicebrain1\\backend\\app\\core\\audio.py'> does not have the attribute 'audio_processor:process_audio'
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1465: AttributeError
+============================== warnings summary ===============================
+infrastructure\config.py:5
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\infrastructure\config.py:5: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\main.py:30
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:30: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:43
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:43: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+app\schemas.py:28
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(UserBase):
+
+app\schemas.py:78
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:78: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class NoteResponse(NoteBase):
+
+app\schemas.py:110
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:110: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class IntegrationResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_pipeline.py::test_pipeline_full_flow - AttributeError: <mod...
+=================== 1 failed, 1 passed, 8 warnings in 0.61s ===================

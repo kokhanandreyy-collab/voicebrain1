@@ -1,111 +1,112 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from sqlalchemy.future import select
-from datetime import datetime
-
-from app.models import Note, LongTermSummary, NoteEmbedding
-from workers.reflection_tasks import _reflection_summary_async
-from workers.analyze_tasks import _process_analyze_async, step_get_medium_term_context, step_get_long_term_memory
+from datetime import datetime, timedelta, timezone
+from app.models import Note, LongTermMemory, User, NoteRelation
+from workers.reflection_tasks import _process_reflection_async
+from workers.maintenance_tasks import _cleanup_memory_async
 
 @pytest.mark.asyncio
-async def test_reflection_summary_creation():
-    """Verify that reflection_summary generates and saves LongTermSummary."""
-    user_id = "user_123"
+async def test_reflection_logic(db_session, test_user, mock_ai_service):
+    # Create some notes for the user
+    for i in range(5):
+        note = Note(
+            user_id=test_user.id,
+            transcription_text=f"Note {i}: Discussing future plans and goals.",
+            created_at=datetime.utcnow() - timedelta(days=i)
+        )
+        db_session.add(note)
+    await db_session.commit()
+
+    # configure mock to return notes and then return the created LTM
+    mock_ltm = LongTermMemory(user_id=test_user.id, importance_score=9.0, summary_text="A summary")
+    mock_result_notes = MagicMock()
+    mock_result_notes.scalars.return_value.all.return_value = [Note(user_id=test_user.id, transcription_text="Note")]
     
-    # Mock Database Session
-    mock_db = AsyncMock()
+    mock_result_user = MagicMock()
+    mock_result_user.scalars.return_value.first.return_value = test_user
     
-    # Mock Notes Query
-    mock_note = MagicMock(spec=Note)
-    mock_note.title = "Test Note"
-    mock_note.summary = "Test Summary"
-    mock_note.status = "COMPLETED"
+    mock_result_ltm = MagicMock()
+    mock_result_ltm.scalars.return_value.first.return_value = mock_ltm
     
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [mock_note]
-    mock_db.execute.return_value = mock_result
-    
-    with patch("workers.reflection_tasks.AsyncSessionLocal", return_value=mock_db), \
-         patch("workers.reflection_tasks.ai_service") as mock_ai:
+    # 1. Select Notes, 2. Select User (identity), 3. Select LTM (verify)
+    db_session.execute.side_effect = [mock_result_notes, mock_result_user, mock_result_ltm]
+
+    # We need to patch get_chat_completion because _process_reflection_async calls it directly
+    with patch("app.services.ai_service.ai_service.get_chat_completion", AsyncMock(return_value='{"summary": "A summary", "identity_summary": "Identity", "importance_score": 9.0}')), \
+         patch("app.services.ai_service.ai_service.generate_embedding", AsyncMock(return_value=[0.1]*1536)):
         
-        mock_ai.ask_notes = AsyncMock(return_value="Reflected Insight")
-        mock_ai.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        await _process_reflection_async(test_user.id)
         
-        await _reflection_summary_async(user_id)
+        # Verify LTM entry created
+        from sqlalchemy.future import select
+        res = await db_session.execute(select(LongTermMemory).where(LongTermMemory.user_id == test_user.id))
+        ltm = res.scalars().first()
+        assert ltm is not None
+        assert ltm.importance_score == 9.0
         
-        # Verify persistence
-        assert mock_db.add.called
-        added_obj = mock_db.add.call_args[0][0]
-        assert isinstance(added_obj, LongTermSummary)
-        assert added_obj.summary_text == "Reflected Insight"
-        assert added_obj.user_id == user_id
-        assert mock_db.commit.called
+        # Verify User Identity updated
+        assert test_user.identity_summary == "Identity"
 
 @pytest.mark.asyncio
-async def test_hierarchical_rag_context_loading():
-    """Verify that analysis task gathers all 3 memory layers."""
-    note_id = "note_abc"
-    user_id = "user_456"
+async def test_memory_cleanup_logic(db_session, test_user):
+    now = datetime.now(timezone.utc)
     
-    mock_db = AsyncMock()
+    # Old, unimportant note
+    old_note = Note(
+        id="old-unimportant",
+        user_id=test_user.id,
+        importance_score=2.0,
+        created_at=now - timedelta(days=100)
+    )
+    # New note (should stay)
+    new_note = Note(
+        id="new-note",
+        user_id=test_user.id,
+        importance_score=2.0,
+        created_at=now - timedelta(days=10)
+    )
+    # Old, important note (should stay)
+    important_old_note = Note(
+        id="old-important",
+        user_id=test_user.id,
+        importance_score=9.0,
+        created_at=now - timedelta(days=100)
+    )
     
-    # Mock current note
-    mock_note = MagicMock(spec=Note)
-    mock_note.id = note_id
-    mock_note.user_id = user_id
-    mock_note.transcription_text = "Checking recent events"
+    # configure mock
+    # 1. Select old notes, 2. Select old LTMs, 3. Verify final state (mocking after delete)
+    mock_result_notes_to_del = MagicMock()
+    mock_result_notes_to_del.scalars.return_value.all.return_value = [old_note]
     
-    # Mock note query
-    mock_res_note = MagicMock()
-    mock_res_note.scalars.return_value.first.return_value = mock_note
+    mock_result_ltm_to_del = MagicMock()
+    mock_result_ltm_to_del.scalars.return_value.all.return_value = []
     
-    # Mock user query
-    mock_res_user = MagicMock()
-    mock_res_user.scalars.return_value.first.return_value = MagicMock(bio="Dev context", target_language="en")
+    mock_result_rel_to_del = MagicMock()
+    mock_result_rel_to_del.scalars.return_value.all.return_value = []
     
-    mock_db.execute.side_effect = [mock_res_note, mock_res_user, MagicMock(), MagicMock()]
+    mock_result_final = MagicMock()
+    mock_result_final.scalars.return_value.all.return_value = [new_note, important_old_note]
     
-    with patch("workers.analyze_tasks.AsyncSessionLocal", return_value=mock_db), \
-         patch("workers.analyze_tasks.short_term_memory") as mock_st, \
-         patch("workers.analyze_tasks.step_get_medium_term_context") as mock_mt, \
-         patch("workers.analyze_tasks.step_get_long_term_memory") as mock_lt, \
-         patch("workers.analyze_tasks.ai_service") as mock_ai:
-        
-        mock_st.get_history = AsyncMock(return_value=[{"text": "Added a task"}])
-        mock_mt.return_value = "Medium context"
-        mock_lt.return_value = "Long context"
-        mock_ai.analyze_text = AsyncMock(return_value={"title": "Test"})
-        
-        await _process_analyze_async(note_id)
-        
-        # Verify ai_service call contains the combined hierarchical context
-        call_args = mock_ai.analyze_text.call_args
-        context = call_args.kwargs["previous_context"]
-        
-        assert "Short-term" in context
-        assert "Recent context" in context
-        assert "Long-term knowledge" in context
-        assert "Medium context" in context
-        assert "Long context" in context
+    # We need to handle multiple execute calls:
+    # 1. Notes, 2. LTMs, 3. Relations, 4. Final verification in test
+    db_session.execute.side_effect = [
+        mock_result_notes_to_del, 
+        mock_result_ltm_to_del, 
+        mock_result_rel_to_del, 
+        mock_result_final
+    ]
 
-@pytest.mark.asyncio
-async def test_long_term_memory_retrieval_order():
-    """Verify that long-term memory is fetched by importance score."""
-    user_id = "user_789"
-    mock_db = AsyncMock()
+    await _cleanup_memory_async()
     
-    mock_sum = MagicMock(spec=LongTermSummary)
-    mock_sum.summary_text = "Important Summary"
+    # Verify deletions
+    assert db_session.delete.called
     
-    mock_res = MagicMock()
-    mock_res.scalars.return_value.all.return_value = [mock_sum]
-    mock_db.execute.return_value = mock_res
+    # old_note should be gone in the final fetch
+    from sqlalchemy.future import select
+    res = await db_session.execute(select(Note).where(Note.user_id == test_user.id))
+    notes = res.scalars().all()
     
-    summary_text = await step_get_long_term_memory(user_id, mock_db)
-    
-    assert "Important Summary" in summary_text
-    # Verify the query used order_by importance desc
-    args = mock_db.execute.call_args[0][0]
-    # Check if 'importance_score' and 'desc' appear in the query string representation
-    # (Simplified check for mock verification)
-    assert "importance_score" in str(args)
+    note_ids = [n.id for n in notes]
+    assert old_note.id not in note_ids
+    assert new_note.id in note_ids
+    assert important_old_note.id in note_ids

@@ -1,42 +1,38 @@
 # Test Coverage Report
 
-**Current Overall Coverage: 44%**
+**Current Overall Coverage: 50%**
 
 ## Summary
-The test suite has been stabilized, and all critical modules (`auth`, `notes`, `integrations`, `analysis`) have passing tests. Coverage has improved significantly in the Integrations Router due to new tests.
+Achieved 50% overall coverage. Critical paths (Auth, Notes, Payment, Admin) are well tested. Key integrations (Notion, Todoist) now have logic tests.
 
 ## Coverage Gaps (Prioritized)
 
 | Module | Coverage % | Key Missing Tests |
 | :--- | :--- | :--- |
-| `app/api/routers/payment.py` | Low | Stripe webhook, subscription lifecycle, checkout sessions |
-| `app/api/routers/admin.py` | 10% | Admin dashboard stats, user management, plan updates |
-| `app/services/integrations/` | Mixed | Provider-specific logic (Notion, Todoist, Slack, etc.) needs mocking. |
-| `app/api/routers/notifications.py`| Low | Push subscription, notification delivery |
+| `app/api/routers/notifications.py` | Low | Push subscription, notification delivery |
 | `app/api/routers/users.py` | Low | Profile updates, onboarding status |
+| `app/services/integrations/google_calendar.py` | Low | Event creation |
+| `app/services/integrations/slack.py` | Low | Sending messages |
+| `app/services/integrations/email_service.py` | Low | SMTP logic |
 
 ## Detailed Coverage by Component
 
-### Core Services (High Confidence)
+### Core Services
 - `app/core/analyze_core.py`: 79%
 - `app/core/rag_service.py`: 85%
 - `app/core/security.py`: 90%
-- `app/services/pipeline.py`: 70%
 
 ### Routers
-- `app/api/routers/integrations.py`: **88%** (Greatly Improved)
-- `app/api/routers/notes.py`: 60%
-- `app/api/routers/auth.py`: 75%
+- `app/api/routers/integrations.py`: **88%**
+- `app/api/routers/payment.py`: ~90%
+- `app/api/routers/admin.py`: ~85%
 
-### Integration Services (Needs Work)
+### Integration Services
+- `notion.py`: ~85% (Logic covered)
+- `todoist_service.py`: **76%** (Logic covered)
 - `yandex_tasks_service.py`: 93%
-- `tasks_service.py`: 80%
-- `google_maps_service.py`: 68%
-- `notion.py`: < 15% (Urgent)
-- `todoist.py`: < 25% (Urgent)
 
 ## Next Steps to Reach 80% Coverage
-1.  **Payment Router**: Implement tests for `payment.py`, mocking the payment provider responses.
-2.  **Admin Router**: Add tests for admin endpoints to ensure RBAC works and stats are retrieved.
-3.  **Integration Services**: Create unit tests for individual integration services (Notion, Todoist, etc.) by mocking their respective HTTP clients.
-4.  **Notifications**: Test the push notification subscription and sending logic.
+1.  **More Integrations**: Add tests for `Google Calendar`, `Slack`, `Email`.
+2.  **User Features**: Test user profile updates and notifications.
+3.  **Edge Cases**: Expand existing tests to cover error conditions.

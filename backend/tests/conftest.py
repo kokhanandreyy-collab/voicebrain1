@@ -34,6 +34,17 @@ mock_package("evernote.edam.notestore.ttypes")
 mock_package("evernote.api")
 mock_package("evernote.api.client")
 mock_package("oauth2")
+mock_package("notion_client")
+m_errors = mock_package("notion_client.errors")
+class MockAPIResponseError(Exception):
+    def __init__(self, *args, **kwargs):
+        self.status = 400
+        self.code = "validation_error"
+m_errors.APIResponseError = MockAPIResponseError
+
+mock_package("todoist_api_python")
+mock_package("todoist_api_python.api")
+mock_package("todoist_api_python.api_async")
 
 # Global mock for RateLimiter to avoid connection issues and identifier being None
 from fastapi_limiter.depends import RateLimiter

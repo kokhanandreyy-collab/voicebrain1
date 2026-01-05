@@ -12,7 +12,6 @@ from app.core.security import create_access_token
 from pydantic import BaseModel
 
 router = APIRouter(
-    prefix="/admin",
     tags=["admin"]
 )
 

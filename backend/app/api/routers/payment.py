@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from typing import Literal
 
 router = APIRouter(
-    prefix="/payment",
     tags=["payment"]
 )
 

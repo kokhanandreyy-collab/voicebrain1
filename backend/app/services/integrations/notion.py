@@ -19,7 +19,7 @@ class NotionIntegration(BaseIntegration):
         self.logger.info(f"Syncing note {note.id} to Notion (Context Aware)")
         
         notion = AsyncClient(auth=integration.auth_token)
-        database_id: Optional[str] = (integration.settings or {}).get("database_id")
+        database_id: Optional[str] = (integration.config or {}).get("database_id")
         
         if not database_id:
              self.logger.warning("No database_id configured for Notion integration.")

@@ -95,7 +95,7 @@ async def upload_note(
     else:
         # Rolling 30 day window (or monthly from payment date)
         # If today > cycle_start + 30 days
-        diff = now - current_user.billing_cycle_start.replace(tzinfo=None) # naive safety
+        diff = now - current_user.billing_cycle_start
         if diff.days >= 30:
              should_reset = True
              current_user.billing_cycle_start = now

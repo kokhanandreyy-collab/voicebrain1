@@ -3,9 +3,18 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Force safe dummy values for tests
-os.environ["REDIS_URL"] = "redis://localhost:6379"
+os.environ["REDIS_URL"] = "memory://"
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/voicebrain_test"
 os.environ["SECRET_KEY"] = "test-secret"
+
+# Mock redis globally before any imports
+import redis
+import redis.asyncio
+mock_redis_obj = AsyncMock()
+redis.asyncio.from_url = MagicMock(return_value=mock_redis_obj)
+redis.asyncio.Redis.from_url = MagicMock(return_value=mock_redis_obj)
+redis.from_url = MagicMock()
+redis.Redis.from_url = MagicMock()
 
 # Mock before app imports
 import types
@@ -69,6 +78,7 @@ def db_session():
     
     # Setup standard mock behaviors for common SQLAlchemy patterns
     mock_result = MagicMock()
+    mock_result.scalars = MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_result.scalars.return_value.all.return_value = []
     

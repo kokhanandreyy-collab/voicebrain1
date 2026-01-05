@@ -34,7 +34,7 @@ async def test_hierarchical_context_content(mock_db_session):
     mock_db_session.execute.side_effect = [mock_st_res, mock_lt_res]
     
     with patch.object(rag_service, 'get_medium_term_context', new_callable=AsyncMock) as mock_medium:
-        mock_medium.return_value = "- MediumTerm1"
+        mock_medium.return_value = {"vector": "MediumTerm1", "graph": ""}
         
         context = await rag_service.build_hierarchical_context(note, mock_db_session)
         

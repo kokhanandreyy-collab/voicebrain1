@@ -34,9 +34,11 @@ async def test_create_or_update_highlight_flow():
         
         mock_note = MagicMock(spec=Note)
         mock_res_sim = MagicMock()
+        mock_res_sim.scalars = MagicMock()
         mock_res_sim.scalars.return_value.first.return_value = None
         
         mock_res_note = MagicMock()
+        mock_res_note.scalars = MagicMock()
         mock_res_note.scalars.return_value.first.return_value = mock_note
         
         mock_session.execute.side_effect = [mock_res_sim, mock_res_note]
@@ -52,7 +54,10 @@ async def test_readwise_connect():
     with patch("app.services.integrations.readwise_service.AsyncSessionLocal") as mock_db:
         mock_session = AsyncMock()
         mock_db.return_value.__aenter__.return_value = mock_session
-        mock_session.execute.return_value.scalars.return_value.first.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute.return_value = mock_result
         
         res = await readwise_service.connect("u1", "token123")
         assert res == "Connected to Readwise"

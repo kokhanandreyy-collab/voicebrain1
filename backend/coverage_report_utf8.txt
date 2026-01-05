@@ -1,0 +1,75 @@
+﻿Name                                                Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------------
+app\__init__.py                                         0      0   100%
+app\api\__init__.py                                     0      0   100%
+app\api\dependencies.py                                23     13    43%   13-30
+app\api\middleware\auth.py                             18      7    61%   26-33
+app\api\middleware\rate_limit.py                        4      0   100%
+app\api\routers\__init__.py                             0      0   100%
+app\api\routers\admin.py                              197    130    34%   21-23, 59-75, 83-106, 127-160, 170-171, 180-210, 218-240, 258-259, 268-283, 291-300, 309-335, 343-355, 367-369, 378-401
+app\api\routers\auth.py                               125     89    29%   26-57, 61-74, 78-101, 105-115, 120-133, 137, 145-157, 167-204
+app\api\routers\exports.py                             73     51    30%   31-57, 73-99, 114-142, 155-185
+app\api\routers\feedback.py                            32     17    47%   25-68
+app\api\routers\integrations.py                       265    194    27%   20-27, 35-51, 59, 91-120, 134-144, 192-239, 252-299, 310-374, 386-397, 404-406, 415-417, 424-426, 435-437, 444-446, 454-456, 464-466, 474-476, 484-486, 494-496, 504-506, 514-516, 524-526, 534-536, 544-546, 554-567, 575-587
+app\api\routers\notes.py                              348    222    36%   34-189, 221, 231-233, 254-256, 308, 327-329, 346-366, 380-395, 406-408, 416-421, 430-465, 476, 480, 483, 499-515, 524-554, 563-582, 592-623, 638-658, 675
+app\api\routers\notifications.py                       23     10    57%   25-43
+app\api\routers\oauth.py                               83     63    24%   56-81, 86-181
+app\api\routers\payment.py                            142    111    22%   34-44, 57-73, 82-160, 168-245, 254-271
+app\api\routers\settings.py                            22      7    68%   24-31, 37
+app\api\routers\tags.py                                26     11    58%   18-26, 37-52, 61-76
+app\api\routers\users.py                               76     46    39%   35-146, 168-175, 185
+app\celery_app.py                                       8      0   100%
+app\core\__init__.py                                    0      0   100%
+app\core\analyze_core.py                              116     50    57%   14-24, 28-71, 75-87, 90-94, 144-146
+app\core\audio.py                                      62     47    24%   16-24, 27-36, 40-72, 76-99
+app\core\bot.py                                         3      0   100%
+app\core\intent_detection.py                           27     27     0%   1-65
+app\core\pricing.py                                    12     12     0%   4-33
+app\core\rag_service.py                                88     12    86%   23-25, 69, 90-92, 111-117, 121-123
+app\core\security.py                                   32      9    72%   16, 19, 22-29
+app\core\sync_service.py                              109     91    17%   26-75, 79-106, 118-133, 136-141, 144-148, 151-155, 158-162, 165-169
+app\core\types.py                                      28      0   100%
+app\main.py                                            47      4    91%   36-39, 45, 74
+app\models.py                                         191      8    96%   197-200, 205-208
+app\schemas.py                                        121      9    93%   15-23
+app\services\ai_service.py                            302    265    12%   26-85, 92, 109-138, 145-305, 321-388, 395-427, 433-475, 481-525, 531-576, 582-605
+app\services\integrations\__init__.py                  32      2    94%   60, 63
+app\services\integrations\amocrm.py                    83     72    13%   12-51, 54-172
+app\services\integrations\base.py                      27     11    59%   15, 29, 33-36, 40-48
+app\services\integrations\bitrix24.py                  37     31    16%   8-75
+app\services\integrations\clickup.py                   30     23    23%   9-55
+app\services\integrations\craft.py                     51     45    12%   8-131
+app\services\integrations\dropbox.py                   38     30    21%   10-72
+app\services\integrations\email.py                     36     29    19%   9-95
+app\services\integrations\email_service.py             74     28    62%   33-34, 40-45, 49-72, 86-87
+app\services\integrations\evernote.py                  47     36    23%   12-76, 80-81
+app\services\integrations\google_calendar.py           81     70    14%   12-52, 56-152
+app\services\integrations\google_drive.py              79     67    15%   13-51, 54-132
+app\services\integrations\google_fit.py               120    106    12%   15-39, 42-285
+app\services\integrations\google_maps_service.py       73     23    68%   21-61, 73, 91, 98, 103
+app\services\integrations\jira.py                      62     55    11%   9-115
+app\services\integrations\kaiten.py                    24     17    29%   10-58
+app\services\integrations\linear.py                    38     32    16%   8-78
+app\services\integrations\maps_service.py              64     11    83%   50, 60-61, 77-83, 104-106
+app\services\integrations\markdown_export.py           60     48    20%   14-23, 26-124
+app\services\integrations\microsoft_todo.py            46     39    15%   9-87
+app\services\integrations\notion.py                    97     87    10%   19-170
+app\services\integrations\obsidian_service.py          54     11    80%   18-23, 32, 64, 77-79
+app\services\integrations\readwise.py                  16     11    31%   8-24
+app\services\integrations\readwise_service.py          43      6    86%   24-29
+app\services\integrations\reflect.py                   39     32    18%   9-81
+app\services\integrations\slack.py                     39     33    15%   8-102
+app\services\integrations\tasks_service.py             70     26    63%   30-35, 39-64, 80-81
+app\services\integrations\ticktick.py                  47     39    17%   10-81
+app\services\integrations\todoist.py                   37     30    19%   10-55
+app\services\integrations\vk.py                        32     25    22%   10-61
+app\services\integrations\weeek.py                     38     31    18%   10-74
+app\services\integrations\yandex_disk.py               44     36    18%   10-77
+app\services\integrations\yandex_maps_service.py       73     23    68%   20-58, 69, 92-93, 99, 103
+app\services\integrations\yandex_tasks_service.py      57     10    82%   32-33, 40-45, 58-59
+app\services\integrations\zapier.py                    24     19    21%   8-55
+app\services\pipeline.py                              114     34    70%   29-30, 103-108, 131-152, 156-165
+app\services\readwise_service.py                       20     14    30%   12-39
+app\services\todoist_service.py                        66     51    23%   19-56, 62-99
+---------------------------------------------------------------------------------
+TOTAL                                                4615   2798    39%

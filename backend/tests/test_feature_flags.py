@@ -39,38 +39,26 @@ async def test_sync_service_skips_disabled_provider(mock_db):
     mock_db.execute.return_value = mock_result
     
     # Mock Handlers (Celery Tasks)
-    # We need to patch the imports inside sync_service or the delay calls
-    # Since sync_service imports them inside the method, we patch 'app.core.sync_service.sync_tasks' etc?
-    # Actually, sync_service imports from `workers.sync_tasks`.
+    # Since sync_service imports them inside the method, we patch the origin workers.sync_tasks
     
-    with patch("app.core.sync_service.sync_tasks") as mock_tasks_worker, \
-         patch("app.core.sync_service.sync_readwise") as mock_readwise_worker: # Notion not in standard list in code snippet?
-         
-         # Wait, in the code snippet for sync_service (Step 780):
-         # It checks specific providers. "notion" falls into `else: pass` or implicit generic?
-         # The snippet had `elif integration.provider in ["apple_reminders", "google_tasks"]` etc.
-         # "notion" wasn't explicitly handled in `sync_note` loop in step 780's file view! 
-         # It falls to `else: pass`. So it wouldn't run anyway.
-         # Let's use "readwise" as the skipped one ("readwise_enabled": False).
-         
-         user.feature_flags = {"all_integrations": True, "readwise_enabled": False}
-         integration_readwise = Integration(provider="readwise", user_id="u1", user=user)
-         integration_gmail = Integration(provider="gmail", user_id="u1", user=user)
-         
-         mock_result.scalars().all.return_value = [integration_readwise, integration_gmail]
-         
-         service = SyncService()
-         
-         # We need to verify `sync_readwise.delay` is NOT called
-         # And `sync_email.delay` IS called (for gmail)
-         
-         with patch("app.core.sync_service.sync_email") as mock_email_worker, \
-              patch("app.core.sync_service.sync_readwise") as mock_readwise_worker:
-              
-              await service.sync_note(note, mock_db)
-              
-              mock_readwise_worker.delay.assert_not_called()
-              mock_email_worker.delay.assert_called_with(note.id, "gmail")
+    user.feature_flags = {"all_integrations": True, "readwise_enabled": False}
+    integration_readwise = Integration(provider="readwise", user_id="u1", user=user)
+    integration_gmail = Integration(provider="gmail", user_id="u1", user=user)
+    
+    mock_result.scalars().all.return_value = [integration_readwise, integration_gmail]
+    
+    service = SyncService()
+    
+    # We need to verify `sync_readwise.delay` is NOT called
+    # And `sync_email.delay` IS called (for gmail)
+    
+    with patch("workers.sync_tasks.sync_email") as mock_email_worker, \
+            patch("workers.sync_tasks.sync_readwise") as mock_readwise_worker:
+            
+            await service.sync_note(note, mock_db)
+            
+            mock_readwise_worker.delay.assert_not_called()
+            mock_email_worker.delay.assert_called_with(note.id, "gmail")
 
 @pytest.mark.asyncio
 async def test_sync_service_skips_all(mock_db):
@@ -85,6 +73,6 @@ async def test_sync_service_skips_all(mock_db):
     
     service = SyncService()
     
-    with patch("app.core.sync_service.sync_email") as mock_email_worker:
+    with patch("workers.sync_tasks.sync_email") as mock_email_worker:
         await service.sync_note(note, mock_db)
         mock_email_worker.delay.assert_not_called()

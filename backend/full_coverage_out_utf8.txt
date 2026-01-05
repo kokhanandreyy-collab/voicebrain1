@@ -1,0 +1,1355 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\User\Documents\GitHub\voicebrain1\backend
+configfile: pytest.ini
+plugins: anyio-3.7.1, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 69 items
+
+tests\test_adaptive_learning.py F                                        [  1%]
+tests\test_adaptive_memory.py ...                                        [  5%]
+tests\test_analyze_hierarchical.py FF                                    [  8%]
+tests\test_celery_tasks.py ...                                           [ 13%]
+tests\test_cleanup.py FF                                                 [ 15%]
+tests\test_cleanup_memory.py .                                           [ 17%]
+tests\test_cleanup_relations.py .                                        [ 18%]
+tests\test_email.py .F                                                   [ 21%]
+tests\test_feature_flags.py .FF                                          [ 26%]
+tests\test_forgetting_rag.py ..                                          [ 28%]
+tests\test_google_maps.py ....                                           [ 34%]
+tests\test_graph_memory.py ...                                           [ 39%]
+tests\test_hierarchical_context.py F                                     [ 40%]
+tests\test_identity_core.py FF                                           [ 43%]
+tests\test_maps.py ..                                                    [ 46%]
+tests\test_memory.py ..                                                  [ 49%]
+tests\test_notes.py E                                                    [ 50%]
+tests\test_notes_router.py .....                                         [ 57%]
+tests\test_obsidian.py .F                                                [ 60%]
+tests\test_pipeline.py ..                                                [ 63%]
+tests\test_rag.py ...                                                    [ 68%]
+tests\test_readwise.py ..F                                               [ 72%]
+tests\test_reflection.py F.                                              [ 75%]
+tests\test_security.py ...F..F                                           [ 85%]
+tests\test_tasks.py ..F                                                  [ 89%]
+tests\test_yandex_maps.py ....                                           [ 95%]
+tests\test_yandex_tasks.py ..F                                           [100%]
+
+=================================== ERRORS ====================================
+______________________ ERROR at setup of test_notes_flow ______________________
+file C:\Users\User\Documents\GitHub\voicebrain1\backend\tests\test_notes.py, line 4
+  @pytest.mark.asyncio
+  async def test_notes_flow(async_client, db_session):
+      # 1. Signup
+      signup_data = {
+          "email": "test@example.com",
+          "password": "testpassword123"
+      }
+      response = await async_client.post("/auth/signup", json=signup_data)
+      assert response.status_code == 200
+      assert "Registration successful" in response.json()["message"]
+
+      # 2. Verify Email (Manual bypass in DB)
+      from sqlalchemy.future import select
+      from app.models import User
+      result = await db_session.execute(select(User).where(User.email == "test@example.com"))
+      user = result.scalars().first()
+      user.is_verified = True
+      await db_session.commit()
+
+      # 3. Login
+      login_data = {
+          "email": "test@example.com",
+          "password": "testpassword123"
+      }
+      response = await async_client.post("/auth/login", json=login_data)
+      assert response.status_code == 200
+      token = response.json()["access_token"]
+      headers = {"Authorization": f"Bearer {token}"}
+
+      # 4. Upload Audio
+      audio_content = b"fake-audio-data"
+      files = {"file": ("test.webm", io.BytesIO(audio_content), "audio/webm")}
+
+      # We mock storage_client in conftest.py
+      response = await async_client.post("/notes/upload", files=files, headers=headers)
+
+      assert response.status_code == 200
+      note_data = response.json()
+      assert note_data["status"] == "PROCESSING"
+      assert note_data["title"] == "Processing..."
+
+      # Check DB
+      from app.models import Note
+      note_id = note_data["id"]
+      result = await db_session.execute(select(Note).where(Note.id == note_id))
+      db_note = result.scalars().first()
+      assert db_note is not None
+      assert db_note.status == "PROCESSING"
+      assert db_note.user_id == user.id
+E       fixture 'async_client' not found
+>       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, client, cov, db_session, doctest_namespace, event_loop_policy, mock_ai_service, mock_celery, mock_celery_app, mock_db_session_factory, mock_limiter, mock_redis, monkeypatch, no_cover, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, test_user, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Users\User\Documents\GitHub\voicebrain1\backend\tests\test_notes.py:4
+================================== FAILURES ===================================
+___________________ test_adaptive_learning_prompt_injection ___________________
+
+    @pytest.mark.asyncio
+    async def test_adaptive_learning_prompt_injection():
+        """Test that adaptive learning instructions are injected into user bio/context."""
+    
+        mock_db = AsyncMock()
+        mock_memory = AsyncMock()
+        user = User(id="u1", bio="Bio", identity_summary="Identity")
+        note = Note(id="n1", transcription_text="Set priority to P0", user_id="u1")
+    
+        with patch("app.core.analyze_core.ai_service") as mock_ai, \
+             patch("app.core.analyze_core.rag_service") as mock_rag:
+    
+             mock_rag.build_hierarchical_context.return_value = "CTX"
+             mock_ai.analyze_text.return_value = {"title": "T"}
+    
+>            await analyze_core.analyze_step(note, user, mock_db, mock_memory)
+
+tests\test_adaptive_learning.py:21: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.core.analyze_core.AnalyzeCore object at 0x000001BFE3134D70>
+note = <app.models.Note object at 0x000001BFE3D9D2B0>
+user = <app.models.User object at 0x000001BFE3D5F620>
+db = <AsyncMock id='1923672831856'>
+memory_service = <AsyncMock id='1923672832528'>
+
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
+        """
+        Orchestrates the analysis: RAG Context -> AI Analysis -> Save
+        """
+        # 1. Context
+        user_bio = (user.bio or "") if user else ""
+    
+        # Inject Identity Core
+        if user and user.identity_summary:
+            user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
+    
+        # Inject Adaptive Preferences
+        if user and user.adaptive_preferences:
+            import json
+            prefs_str = json.dumps(user.adaptive_preferences, indent=2)
+            user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
+    
+        # Adaptive Learning Instruction
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
+    
+        target_lang = user.target_language if user else "Original"
+    
+>       hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: object str can't be used in 'await' expression
+
+app\core\analyze_core.py:125: TypeError
+____________________ test_hierarchical_context_integration ____________________
+
+mock_db_session = <AsyncMock id='1923672819424'>
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_context_integration(mock_db_session):
+        """Test full context assembly in analyze_step."""
+    
+        # Setup
+        analyzer = AnalyzeCore()
+        user = User(id="u1", identity_summary="IdentityContent")
+        note = Note(id="n1", user_id="u1", transcription_text="New Note")
+    
+        # Mock RAG Service
+        with patch("app.core.analyze_core.rag_service") as mock_rag, \
+             patch("app.core.analyze_core.ai_service") as mock_ai:
+    
+             # Mock hierarchical context return
+             expected_context = "Short-term: ...\nRecent: ...\nLong-term: ..."
+             mock_rag.build_hierarchical_context.return_value = expected_context
+    
+             # Mock AI response
+             mock_ai.analyze_text.return_value = {
+                 "title": "Analyzed Title",
+                 "summary": "Summary",
+                 "action_items": []
+             }
+    
+             # Execute
+>            await analyzer.analyze_step(note, user, mock_db_session, memory_service=AsyncMock())
+
+tests\test_analyze_hierarchical.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.core.analyze_core.AnalyzeCore object at 0x000001BFE3E302B0>
+note = <app.models.Note object at 0x000001BFE3E30C30>
+user = <app.models.User object at 0x000001BFE3E30B00>
+db = <AsyncMock id='1923672819424'>
+memory_service = <AsyncMock id='1923670882832'>
+
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
+        """
+        Orchestrates the analysis: RAG Context -> AI Analysis -> Save
+        """
+        # 1. Context
+        user_bio = (user.bio or "") if user else ""
+    
+        # Inject Identity Core
+        if user and user.identity_summary:
+            user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
+    
+        # Inject Adaptive Preferences
+        if user and user.adaptive_preferences:
+            import json
+            prefs_str = json.dumps(user.adaptive_preferences, indent=2)
+            user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
+    
+        # Adaptive Learning Instruction
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
+    
+        target_lang = user.target_language if user else "Original"
+    
+>       hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: object str can't be used in 'await' expression
+
+app\core\analyze_core.py:125: TypeError
+_______________________ test_build_hierarchical_context _______________________
+
+mock_db_session = <AsyncMock id='1923675009920'>
+
+    @pytest.mark.asyncio
+    async def test_build_hierarchical_context(mock_db_session):
+        """Test the RAG service logic directly."""
+        from app.core.rag_service import rag_service
+    
+        note = Note(id="curr", user_id="u1", transcription_text="Query")
+    
+        # Mock DB for Short Term (Last 5)
+        mock_notes = [Note(title=f"Old {i}", summary="Sum") for i in range(5)]
+        mock_res = MagicMock()
+        mock_res.scalars().all.return_value = mock_notes
+        mock_db_session.execute.return_value = mock_res
+    
+        # Mock medium/long term internals if needed, or rely on empty returns if not mocked?
+        # RAG service class methods `get_medium_term_context` and `get_long_term_memory` call DB too.
+        # To test fully we need to mock those or mock the db calls they make.
+        # Easiest is to mock the methods on the rag_service instance wrapper.
+    
+        with patch.object(rag_service, 'get_medium_term_context', return_value="MediumContent") as mock_med, \
+             patch.object(rag_service, 'get_long_term_memory', return_value="LongContent") as mock_long:
+    
+>            ctx = await rag_service.build_hierarchical_context(note, mock_db_session, None)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_analyze_hierarchical.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.core.rag_service.RagService object at 0x000001BFE3B80EC0>
+note = <app.models.Note object at 0x000001BFE314CB90>
+db = <AsyncMock id='1923675009920'>, memory_service = None
+
+    async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any = None) -> str:
+        """Aggregates Short, Medium, and Long term memory contexts."""
+        # 1. Short Term (Last 10 Notes)
+        try:
+            st_res = await db.execute(
+                select(Note)
+                .where(Note.user_id == note.user_id, Note.id != note.id)
+                .order_by(desc(Note.created_at))
+                .limit(10)
+            )
+            st_notes = st_res.scalars().all()
+            short_term = "\n".join([f"- {n.created_at.strftime('%Y-%m-%d')}: {n.summary[:100]}" for n in st_notes if n.summary])
+        except Exception as e:
+            logger.error(f"Short-term fetch failed: {e}")
+            short_term = ""
+    
+        if not short_term: short_term = "No recent notes."
+    
+        # 2. Medium Term (RAG + Graph)
+        mt_data = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
+>       vector_context = mt_data["vector"]
+                         ^^^^^^^^^^^^^^^^^
+E       TypeError: string indices must be integers, not 'str'
+
+app\core\rag_service.py:147: TypeError
+---------------------------- Captured stderr call -----------------------------
+2026-01-05 22:52:49.271 | ERROR    | app.core.rag_service:build_hierarchical_context:140 - Short-term fetch failed: 'NoneType' object has no attribute 'strftime'
+_____________________________ test_cleanup_notes ______________________________
+
+    @pytest.mark.asyncio
+    async def test_cleanup_notes():
+        """Verify that old low-importance notes are deleted via SQLAlchemy delete()."""
+        mock_session = AsyncMock()
+        mock_res_notes = MagicMock(rowcount=5)
+        mock_res_ltm = MagicMock(rowcount=2)
+    
+        mock_session.execute.side_effect = [mock_res_notes, mock_res_ltm]
+    
+        # We patch the session factory and asyncio.run to avoid nested loop errors
+        with patch("tasks.cleanup_memory.async_session", return_value=mock_session):
+            with patch("asyncio.run", side_effect=lambda coroutine: asyncio.get_event_loop().run_until_complete(coroutine)):
+                import asyncio
+>               cleanup_memory()
+
+tests\test_cleanup.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\celery\local.py:182: in __call__
+    return self._get_current_object()(*a, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\celery\app\task.py:411: in __call__
+    return self.run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+workers\maintenance_tasks.py:163: in cleanup_memory_task
+    async_to_sync(_cleanup_memory_async)()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asgiref.sync.AsyncToSync object at 0x000001BFE3E32060>, args = ()
+kwargs = {}, __traceback_hide__ = True
+
+    def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        __traceback_hide__ = True  # noqa: F841
+    
+        if not self.force_new_loop and not self.main_event_loop:
+            # There's no event loop in this thread. Look for the threadlocal if
+            # we're inside SyncToAsync
+            main_event_loop_pid = getattr(
+                SyncToAsync.threadlocal, "main_event_loop_pid", None
+            )
+            # We make sure the parent loop is from the same process - if
+            # they've forked, this is not going to be valid any more (#194)
+            if main_event_loop_pid and main_event_loop_pid == os.getpid():
+                self.main_event_loop = getattr(
+                    SyncToAsync.threadlocal, "main_event_loop", None
+                )
+    
+        # You can't call AsyncToSync from a thread with a running event loop
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+>           raise RuntimeError(
+                "You cannot use AsyncToSync in the same thread as an async event loop - "
+                "just await the async function directly."
+            )
+E           RuntimeError: You cannot use AsyncToSync in the same thread as an async event loop - just await the async function directly.
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\asgiref\sync.py:233: RuntimeError
+____________________________ test_cleanup_longterm ____________________________
+
+    @pytest.mark.asyncio
+    async def test_cleanup_longterm():
+        """Verify deletion logic for LongTermMemory."""
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [MagicMock(rowcount=0), MagicMock(rowcount=10)]
+    
+        with patch("tasks.cleanup_memory.async_session", return_value=mock_session):
+             with patch("asyncio.run", side_effect=lambda coroutine: asyncio.get_event_loop().run_until_complete(coroutine)):
+                import asyncio
+>               cleanup_memory()
+
+tests\test_cleanup.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\celery\local.py:182: in __call__
+    return self._get_current_object()(*a, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\celery\app\task.py:411: in __call__
+    return self.run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+workers\maintenance_tasks.py:163: in cleanup_memory_task
+    async_to_sync(_cleanup_memory_async)()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asgiref.sync.AsyncToSync object at 0x000001BFE3E30B00>, args = ()
+kwargs = {}, __traceback_hide__ = True
+
+    def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        __traceback_hide__ = True  # noqa: F841
+    
+        if not self.force_new_loop and not self.main_event_loop:
+            # There's no event loop in this thread. Look for the threadlocal if
+            # we're inside SyncToAsync
+            main_event_loop_pid = getattr(
+                SyncToAsync.threadlocal, "main_event_loop_pid", None
+            )
+            # We make sure the parent loop is from the same process - if
+            # they've forked, this is not going to be valid any more (#194)
+            if main_event_loop_pid and main_event_loop_pid == os.getpid():
+                self.main_event_loop = getattr(
+                    SyncToAsync.threadlocal, "main_event_loop", None
+                )
+    
+        # You can't call AsyncToSync from a thread with a running event loop
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+>           raise RuntimeError(
+                "You cannot use AsyncToSync in the same thread as an async event loop - "
+                "just await the async function directly."
+            )
+E           RuntimeError: You cannot use AsyncToSync in the same thread as an async event loop - just await the async function directly.
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\asgiref\sync.py:233: RuntimeError
+__________________________ test_email_oauth_connect ___________________________
+
+    @pytest.mark.asyncio
+    async def test_email_oauth_connect():
+        """Verify email connection logic placeholders."""
+        with patch("app.services.integrations.email_service.AsyncSessionLocal") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.first.return_value = None
+    
+            # Mock httpx for token exchange
+            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                mock_post.return_value = MagicMock(status_code=200)
+                mock_post.return_value.json.return_value = {"access_token": "test_token"}
+    
+>               res = await email_service.connect_gmail("u1", "code123")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_email.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.integrations.email_service.EmailService object at 0x000001BFE3B80AD0>
+user_id = 'u1', code = 'code123'
+
+    async def connect_gmail(self, user_id: str, code: str) -> str:
+        """Connect Gmail account via OAuth."""
+        token_url = "https://oauth2.googleapis.com/token"
+        payload = {
+            "client_id": self.gmail_client_id,
+            "client_secret": self.gmail_client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": f"{settings.API_BASE_URL}/api/v1/integrations/gmail/callback"
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(token_url, data=payload)
+            if resp.status_code != 200:
+                logger.error(f"Gmail OAuth Failed: {resp.text}")
+                raise Exception("Failed to connect Gmail")
+            data = resp.json()
+            access_token = data.get("access_token")
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Integration).where(Integration.user_id == user_id, Integration.provider == "gmail"))
+>               existing = result.scalars().first()
+                           ^^^^^^^^^^^^^^^^^^^^^^
+E               AttributeError: 'coroutine' object has no attribute 'first'
+
+app\services\integrations\email_service.py:39: AttributeError
+__________________ test_sync_service_skips_disabled_provider __________________
+
+mock_db = <AsyncMock id='1923694583424'>
+
+    @pytest.mark.asyncio
+    async def test_sync_service_skips_disabled_provider(mock_db):
+        """Test that sync service skips integration if disabled in feature flags."""
+    
+        # Setup Data
+        user = User(id="u1", feature_flags={"all_integrations": True, "notion_enabled": False})
+        note = Note(id="n1", user_id="u1", user=user)
+    
+        # Integration that SHOULD be skipped
+        integration_notion = Integration(provider="notion", user_id="u1", user=user)
+        # Integration that SHOULD run
+        integration_todoist = Integration(provider="todoist", user_id="u1", user=user)
+    
+        user_integrations = [integration_notion, integration_todoist]
+    
+        # Mock DB Query results
+        mock_result = MagicMock()
+        mock_result.scalars().all.return_value = user_integrations
+        mock_db.execute.return_value = mock_result
+    
+        # Mock Handlers (Celery Tasks)
+        # We need to patch the imports inside sync_service or the delay calls
+        # Since sync_service imports them inside the method, we patch 'app.core.sync_service.sync_tasks' etc?
+        # Actually, sync_service imports from `workers.sync_tasks`.
+    
+>       with patch("app.core.sync_service.sync_tasks") as mock_tasks_worker, \
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             patch("app.core.sync_service.sync_readwise") as mock_readwise_worker: # Notion not in standard list in code snippet?
+
+tests\test_feature_flags.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1495: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x000001BFE515F4D0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.core.sync_service' from 'C:\\Users\\User\\Documents\\GitHub\\voicebrain1\\backend\\app\\core\\sync_service.py'> does not have the attribute 'sync_tasks'
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1465: AttributeError
+_________________________ test_sync_service_skips_all _________________________
+
+mock_db = <AsyncMock id='1923675948768'>
+
+    @pytest.mark.asyncio
+    async def test_sync_service_skips_all(mock_db):
+        """Test global kill switch."""
+        user = User(id="u1", feature_flags={"all_integrations": False})
+        note = Note(id="n1", user_id="u1", user=user)
+        integration = Integration(provider="gmail", user_id="u1", user=user)
+    
+        mock_result = MagicMock()
+        mock_result.scalars().all.return_value = [integration]
+        mock_db.execute.return_value = mock_result
+    
+        service = SyncService()
+    
+>       with patch("app.core.sync_service.sync_email") as mock_email_worker:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_feature_flags.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1495: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x000001BFE3FA4F30>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.core.sync_service' from 'C:\\Users\\User\\Documents\\GitHub\\voicebrain1\\backend\\app\\core\\sync_service.py'> does not have the attribute 'sync_email'
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1465: AttributeError
+______________________ test_hierarchical_context_content ______________________
+
+mock_db_session = <AsyncMock id='1923676236704'>
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_context_content(mock_db_session):
+        """Test standard hierarchical context content without complex logic."""
+        note = Note(id="current", user_id="u1", transcription_text="Hello", created_at=datetime.utcnow())
+    
+        # Setup Mocks for DB calls
+        # 1. Short Term (Notes)
+        st_notes = [Note(id="n1", summary="ShortTerm1", created_at=datetime(2025, 1, 1))]
+        mock_st_res = MagicMock()
+        mock_st_res.scalars().all.return_value = st_notes
+    
+        # 2. Medium Term (Vector Search)
+        # This is called inside get_medium_term_context.
+        # We will mock get_medium_term_context directly to simplify unit testing logic complexity.
+    
+        # 3. Long Term (LTM)
+        lt_mems = [LongTermMemory(summary_text="LongTerm1", importance_score=9.0)]
+        mock_lt_res = MagicMock()
+        mock_lt_res.scalars().all.return_value = lt_mems
+    
+        # Mock DB Execute Sequence for build_hierarchical_context main logic (Short and Long).
+        # Medium is mocked away.
+        mock_db_session.execute.side_effect = [mock_st_res, mock_lt_res]
+    
+        with patch.object(rag_service, 'get_medium_term_context', new_callable=AsyncMock) as mock_medium:
+            mock_medium.return_value = "- MediumTerm1"
+    
+>           context = await rag_service.build_hierarchical_context(note, mock_db_session)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_hierarchical_context.py:39: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.core.rag_service.RagService object at 0x000001BFE3B80EC0>
+note = <app.models.Note object at 0x000001BFE3E0AB30>
+db = <AsyncMock id='1923676236704'>, memory_service = None
+
+    async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any = None) -> str:
+        """Aggregates Short, Medium, and Long term memory contexts."""
+        # 1. Short Term (Last 10 Notes)
+        try:
+            st_res = await db.execute(
+                select(Note)
+                .where(Note.user_id == note.user_id, Note.id != note.id)
+                .order_by(desc(Note.created_at))
+                .limit(10)
+            )
+            st_notes = st_res.scalars().all()
+            short_term = "\n".join([f"- {n.created_at.strftime('%Y-%m-%d')}: {n.summary[:100]}" for n in st_notes if n.summary])
+        except Exception as e:
+            logger.error(f"Short-term fetch failed: {e}")
+            short_term = ""
+    
+        if not short_term: short_term = "No recent notes."
+    
+        # 2. Medium Term (RAG + Graph)
+        mt_data = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
+>       vector_context = mt_data["vector"]
+                         ^^^^^^^^^^^^^^^^^
+E       TypeError: string indices must be integers, not 'str'
+
+app\core\rag_service.py:147: TypeError
+_____________________ test_identity_update_in_reflection ______________________
+
+mock_db_session = <AsyncMock name='AsyncSessionLocal().__aenter__()' id='1923675675616'>
+
+    @pytest.mark.asyncio
+    async def test_identity_update_in_reflection(mock_db_session):
+        """Test that generic reflection task updates user identify_summary."""
+    
+        user_id = "user_identity_test"
+    
+        # 1. Mock DB returns Notes then User
+        mock_notes_res = MagicMock()
+        mock_notes_res.scalars().all.return_value = [MagicMock(transcription_text="note", created_at="2024-01-01")]
+    
+        # User mock
+        mock_user = User(id=user_id, identity_summary="old value")
+        mock_user_res = MagicMock()
+        mock_user_res.scalars().first.return_value = mock_user
+    
+        mock_db_session.execute.side_effect = [mock_notes_res, mock_user_res]
+    
+        # 2. Mock AI Logic
+        json_resp = '{"summary": "Test Summary", "identity_summary": "NEW IDENTITY PROFILED", "importance_score": 8.0}'
+    
+        with patch("workers.reflection_tasks.ai_service") as mock_ai, \
+             patch("workers.reflection_tasks.AsyncSessionLocal") as mock_session_cls:
+    
+             mock_session_cls.return_value.__aenter__.return_value = mock_db_session # Context manager mock
+             mock_ai.get_chat_completion.return_value = json_resp
+             mock_ai.clean_json_response.return_value = json_resp
+             mock_ai.get_embedding.return_value = [0.1] * 1536
+    
+             await _process_reflection_async(user_id)
+    
+             # 3. Assertions
+>            assert mock_user.identity_summary == "NEW IDENTITY PROFILED"
+E            AssertionError: assert 'old value' == 'NEW IDENTITY PROFILED'
+E              
+E              - NEW IDENTITY PROFILED
+E              + old value
+
+tests\test_identity_core.py:42: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-01-05 22:52:50.647 | INFO     | workers.reflection_tasks:_process_reflection_async:13 - Starting reflection for user user_identity_test
+2026-01-05 22:52:50.648 | ERROR    | workers.reflection_tasks:_process_reflection_async:142 - Reflection failed: object str can't be used in 'await' expression
+_____________________ test_analyze_core_injects_identity ______________________
+
+    @pytest.mark.asyncio
+    async def test_analyze_core_injects_identity():
+        """Test AnalyzeCore injecting identity_summary into call context."""
+        from app.core.analyze_core import analyze_core
+        from app.models import Note, User
+    
+        mock_db = AsyncMock()
+        mock_memory = AsyncMock()
+    
+        user = User(id="u1", bio="My Bio", identity_summary="CORE IDENTITY")
+        note = Note(id="n1", transcription_text="Hello world", user_id="u1")
+    
+        with patch("app.core.analyze_core.ai_service") as mock_ai, \
+             patch("app.core.analyze_core.rag_service") as mock_rag:
+    
+             mock_rag.build_hierarchical_context.return_value = "RAG Context"
+             mock_ai.analyze_text.return_value = {"title": "Analyzed", "summary": "X"}
+    
+>            await analyze_core.analyze_step(note, user, mock_db, mock_memory)
+
+tests\test_identity_core.py:63: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.core.analyze_core.AnalyzeCore object at 0x000001BFE3134D70>
+note = <app.models.Note object at 0x000001BFE3FA7A10>
+user = <app.models.User object at 0x000001BFE4008230>
+db = <AsyncMock id='1923695766768'>
+memory_service = <AsyncMock id='1923695767440'>
+
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
+        """
+        Orchestrates the analysis: RAG Context -> AI Analysis -> Save
+        """
+        # 1. Context
+        user_bio = (user.bio or "") if user else ""
+    
+        # Inject Identity Core
+        if user and user.identity_summary:
+            user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
+    
+        # Inject Adaptive Preferences
+        if user and user.adaptive_preferences:
+            import json
+            prefs_str = json.dumps(user.adaptive_preferences, indent=2)
+            user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
+    
+        # Adaptive Learning Instruction
+        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
+    
+        target_lang = user.target_language if user else "Original"
+    
+>       hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: object str can't be used in 'await' expression
+
+app\core\analyze_core.py:125: TypeError
+____________________________ test_obsidian_connect ____________________________
+
+    @pytest.mark.asyncio
+    async def test_obsidian_connect():
+        """Verify vault path storage."""
+        with patch("app.services.integrations.obsidian_service.AsyncSessionLocal") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.first.return_value = None
+    
+>           res = await obsidian_service.connect("u1", "/path/to/vault")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_obsidian.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.integrations.obsidian_service.ObsidianService object at 0x000001BFE3B816A0>
+user_id = 'u1', vault_path = '/path/to/vault'
+
+    async def connect(self, user_id: str, vault_path: str) -> str:
+        """Store Obsidian vault path."""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Integration).where(Integration.user_id == user_id, Integration.provider == "obsidian"))
+>           existing = result.scalars().first()
+                       ^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'coroutine' object has no attribute 'first'
+
+app\services\integrations\obsidian_service.py:17: AttributeError
+____________________________ test_readwise_connect ____________________________
+
+    @pytest.mark.asyncio
+    async def test_readwise_connect():
+        """Verify Readwise token connection logic."""
+        with patch("app.services.integrations.readwise_service.AsyncSessionLocal") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.first.return_value = None
+    
+>           res = await readwise_service.connect("u1", "token123")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_readwise.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.integrations.readwise_service.ReadwiseService object at 0x000001BFE3B81A90>
+user_id = 'u1', access_token = 'token123'
+
+    async def connect(self, user_id: str, access_token: str) -> str:
+        """Store Readwise access token."""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Integration).where(Integration.user_id == user_id, Integration.provider == "readwise"))
+>           existing = result.scalars().first()
+                       ^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'coroutine' object has no attribute 'first'
+
+app\services\integrations\readwise_service.py:23: AttributeError
+___________________________ test_reflection_process ___________________________
+
+mock_db_session = <AsyncMock name='AsyncSessionLocal().__aenter__()' id='1923694588128'>
+
+    @pytest.mark.asyncio
+    async def test_reflection_process(mock_db_session):
+        """Test individual reflection task."""
+        user_id = "u1"
+    
+        # Mock Notes
+        notes = [
+            Note(id=f"n{i}", user_id=user_id, transcription_text=f"Note content {i}", created_at="2024-01-01")
+            for i in range(5)
+        ]
+    
+        # Mock DB Execute (Fetch Notes)
+        # Mock DB - Sequence of results (Notes then User)
+        mock_notes_result = MagicMock()
+        mock_notes_result.scalars().all.return_value = notes
+    
+        mock_user = User(id=user_id, identity_summary="")
+        mock_user_result = MagicMock()
+        mock_user_result.scalars().first.return_value = mock_user
+    
+        mock_db_session.execute.side_effect = [mock_notes_result, mock_user_result]
+    
+        # Mock AI Service
+        with patch("workers.reflection_tasks.ai_service") as mock_ai, \
+             patch("workers.reflection_tasks.AsyncSessionLocal") as mock_session_cls:
+    
+             mock_session_cls.return_value.__aenter__.return_value = mock_db_session
+    
+             # Mock LLM Response
+             json_resp = '{"summary": "╧юы№чютрЄхы№ ЁрсюЄры эрф яЁюхъЄюь X, ьэюую уютюЁшы ю Y. ┬ Ўхыюь яЁюфєъЄштэр  эхфхы .", "identity_summary": "─хыютющ, ыръюэшўэ√щ", "importance_score": 9.5}'
+             mock_ai.get_chat_completion.return_value = json_resp
+             mock_ai.clean_json_response.return_value = json_resp
+             # Mock Embedding
+             mock_ai.get_embedding.return_value = [0.1] * 1536
+    
+             await _process_reflection_async(user_id)
+    
+             # Verify AI called
+             mock_ai.get_chat_completion.assert_called_once()
+    
+             # Verify Save Memory
+>            assert mock_db_session.add.call_count == 1
+E            AssertionError: assert 0 == 1
+E             +  where 0 = <AsyncMock name='AsyncSessionLocal().__aenter__().add' id='1923676229312'>.call_count
+E             +    where <AsyncMock name='AsyncSessionLocal().__aenter__().add' id='1923676229312'> = <AsyncMock name='AsyncSessionLocal().__aenter__()' id='1923694588128'>.add
+
+tests\test_reflection.py:52: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-01-05 22:52:51.070 | INFO     | workers.reflection_tasks:_process_reflection_async:13 - Starting reflection for user u1
+2026-01-05 22:52:51.071 | ERROR    | workers.reflection_tasks:_process_reflection_async:142 - Reflection failed: object str can't be used in 'await' expression
+___________________________ test_rate_limit_trigger ___________________________
+
+args = (), keywargs = {}
+
+    @wraps(func)
+    def patched(*args, **keywargs):
+>       with self.decoration_helper(patched,
+                                    args,
+                                    keywargs) as (newargs, newkeywargs):
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1421: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\contextlib.py:141: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1403: in decoration_helper
+    arg = exit_stack.enter_context(patching)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\contextlib.py:530: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1479: in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+name = 'app.core.limiter.limiter'
+
+    def resolve_name(name):
+        """
+        Resolve a name to an object.
+    
+        It is expected that `name` will be a string in one of the following
+        formats, where W is shorthand for a valid Python identifier and dot stands
+        for a literal period in these pseudo-regexes:
+    
+        W(.W)*
+        W(.W)*:(W(.W)*)?
+    
+        The first form is intended for backward compatibility only. It assumes that
+        some part of the dotted name is a package, and the rest is an object
+        somewhere within that package, possibly nested inside other objects.
+        Because the place where the package stops and the object hierarchy starts
+        can't be inferred by inspection, repeated attempts to import must be done
+        with this form.
+    
+        In the second form, the caller makes the division point clear through the
+        provision of a single colon: the dotted name to the left of the colon is a
+        package to be imported, and the dotted name to the right is the object
+        hierarchy within that package. Only one import is needed in this form. If
+        it ends with the colon, then a module object is returned.
+    
+        The function will return an object (which might be a module), or raise one
+        of the following exceptions:
+    
+        ValueError - if `name` isn't in a recognised format
+        ImportError - if an import failed when it shouldn't have
+        AttributeError - if a failure occurred when traversing the object hierarchy
+                         within the imported package to get to the desired object.
+        """
+        global _NAME_PATTERN
+        if _NAME_PATTERN is None:
+            # Lazy import to speedup Python startup time
+            import re
+            dotted_words = r'(?!\d)(\w+)(\.(?!\d)(\w+))*'
+            _NAME_PATTERN = re.compile(f'^(?P<pkg>{dotted_words})'
+                                       f'(?P<cln>:(?P<obj>{dotted_words})?)?$',
+                                       re.UNICODE)
+    
+        m = _NAME_PATTERN.match(name)
+        if not m:
+            raise ValueError(f'invalid format: {name!r}')
+        gd = m.groupdict()
+        if gd.get('cln'):
+            # there is a colon - a one-step import is all that's needed
+            mod = importlib.import_module(gd['pkg'])
+            parts = gd.get('obj')
+            parts = parts.split('.') if parts else []
+        else:
+            # no colon - have to iterate to find the package boundary
+            parts = name.split('.')
+            modname = parts.pop(0)
+            # first part *must* be a module/package.
+            mod = importlib.import_module(modname)
+            while parts:
+                p = parts[0]
+                s = f'{modname}.{p}'
+                try:
+                    mod = importlib.import_module(s)
+                    parts.pop(0)
+                    modname = s
+                except ImportError:
+                    break
+        # if we reach this point, mod is the module, already imported, and
+        # parts is the list of parts in the object hierarchy to be traversed, or
+        # an empty list if just the module is wanted.
+        result = mod
+        for p in parts:
+>           result = getattr(result, p)
+                     ^^^^^^^^^^^^^^^^^^
+E           AttributeError: module 'app.core' has no attribute 'limiter'
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\pkgutil.py:528: AttributeError
+_______________ test_robust_client_gives_up_after_max_attempts ________________
+
+    @pytest.mark.asyncio
+    async def test_robust_client_gives_up_after_max_attempts():
+        """Test that RobustAsyncClient eventually raises if still failing."""
+        mock_client = MagicMock(spec=httpx.AsyncClient)
+        failure_res = MagicMock(spec=httpx.Response)
+        failure_res.status_code = 502
+    
+        mock_client.request = AsyncMock(return_value=failure_res)
+    
+        robust = RobustAsyncClient(mock_client)
+    
+        # Since it retries and then returns the last result if successful at retry level
+        # or raises if tenacity raises StopAfterAttempt.
+        # Actually tenacity with reraise=True will return the last result if it was a 'retry_if_result' match
+        # Wait, if tenacity stops, it will return the result of the last attempt if it didn't raise.
+    
+>       response = await robust.get("https://api.example.com", max_attempts=2)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_security.py:103: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+infrastructure\http_robust.py:73: in get
+    return await self.request("GET", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+infrastructure\http_robust.py:70: in request
+    return await _make_request()
+           ^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\asyncio\__init__.py:189: in async_wrapped
+    return await copy(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\asyncio\__init__.py:111: in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\asyncio\__init__.py:153: in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\_utils.py:99: in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\__init__.py:420: in exc_check
+    raise retry_exc.reraise()
+          ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RetryError(<Future at 0x1bfe56d5bf0 state=finished returned Response>)
+
+    def reraise(self) -> t.NoReturn:
+        if self.last_attempt.failed:
+            raise self.last_attempt.result()
+>       raise self
+E       tenacity.RetryError: RetryError[<Future at 0x1bfe56d5bf0 state=finished returned Response>]
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\tenacity\__init__.py:188: RetryError
+---------------------------- Captured stderr call -----------------------------
+2026-01-05 22:52:57.498 | DEBUG    | infrastructure.http_robust:_make_request:66 - HTTP GET https://api.example.com - Attempting...
+2026-01-05 22:52:57.499 | WARNING  | tenacity.before_sleep:log_it:65 - Retrying infrastructure.http_robust.RobustAsyncClient.request.<locals>._make_request in 1.0 seconds as it returned <MagicMock spec='Response' id='1923697768640'>.
+2026-01-05 22:52:58.509 | DEBUG    | infrastructure.http_robust:_make_request:66 - HTTP GET https://api.example.com - Attempting...
+_____________________________ test_connect_tasks ______________________________
+
+    @pytest.mark.asyncio
+    async def test_connect_tasks():
+        """Verify OAuth connection placeholders."""
+        with patch("app.services.integrations.tasks_service.AsyncSessionLocal") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.first.return_value = None
+    
+>           res = await tasks_service.connect_apple("u1", "code123")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_tasks.py:63: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.integrations.tasks_service.TasksService object at 0x000001BFE3B81D30>
+user_id = 'u1', code = 'code123'
+
+    async def connect_apple(self, user_id: str, code: str) -> str:
+        """Connect Apple account (OAuth flow placeholder)."""
+        # Apple OAuth is complex (JWT based). This is a placeholder for the flow.
+        logger.info(f"Connecting Apple Reminders for user {user_id}")
+        # In a real app, we'd exchange the code for a token here.
+        access_token = f"apple_token_{code}"
+    
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Integration).where(Integration.user_id == user_id, Integration.provider == "apple_reminders"))
+>           existing = result.scalars().first()
+                       ^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'coroutine' object has no attribute 'first'
+
+app\services\integrations\tasks_service.py:29: AttributeError
+---------------------------- Captured stderr call -----------------------------
+2026-01-05 22:52:58.634 | INFO     | app.services.integrations.tasks_service:connect_apple:23 - Connecting Apple Reminders for user u1
+__________________________ test_yandex_tasks_connect __________________________
+
+    @pytest.mark.asyncio
+    async def test_yandex_tasks_connect():
+        """Verify Yandex Tasks connection logic."""
+        with patch("app.services.integrations.yandex_tasks_service.AsyncSessionLocal") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__.return_value = mock_session
+            mock_session.execute.return_value.scalars.return_value.first.return_value = None
+    
+            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                mock_post.return_value = MagicMock(status_code=200)
+                mock_post.return_value.json.return_value = {"access_token": "yandex_token_123"}
+    
+>               res = await yandex_tasks_service.connect("u1", "code_abc")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_yandex_tasks.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.integrations.yandex_tasks_service.YandexTasksService object at 0x000001BFE3B81E80>
+user_id = 'u1', code = 'code_abc'
+
+    async def connect(self, user_id: str, code: str) -> str:
+        """Connect Yandex account via OAuth."""
+        payload = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(self.token_url, data=payload)
+            if resp.status_code != 200:
+                logger.error(f"Yandex Tasks OAuth Failed: {resp.text}")
+                raise Exception("Failed to connect Yandex Tasks")
+    
+            data = resp.json()
+            access_token = data.get("access_token")
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Integration).where(Integration.user_id == user_id, Integration.provider == "yandex_tasks"))
+>               existing = result.scalars().first()
+                           ^^^^^^^^^^^^^^^^^^^^^^
+E               AttributeError: 'coroutine' object has no attribute 'first'
+
+app\services\integrations\yandex_tasks_service.py:39: AttributeError
+============================== warnings summary ===============================
+infrastructure\config.py:5
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\infrastructure\config.py:5: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\main.py:30
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:30: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4576: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:43
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\main.py:43: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+app\schemas.py:28
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(UserBase):
+
+app\schemas.py:78
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:78: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class NoteResponse(NoteBase):
+
+app\schemas.py:110
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\app\schemas.py:110: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class IntegrationResponse(BaseModel):
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:19
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:19: DeprecationWarning: 'setName' deprecated - use 'set_name'
+    token = pp.Word(tchar).setName("token")
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:20
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:20: DeprecationWarning: 'leaveWhitespace' deprecated - use 'leave_whitespace'
+    token68 = pp.Combine(pp.Word("-._~+/" + pp.nums + pp.alphas) + pp.Optional(pp.Word("=").leaveWhitespace())).setName(
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:20
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:20: DeprecationWarning: 'setName' deprecated - use 'set_name'
+    token68 = pp.Combine(pp.Word("-._~+/" + pp.nums + pp.alphas) + pp.Optional(pp.Word("=").leaveWhitespace())).setName(
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:24
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:24: DeprecationWarning: 'setName' deprecated - use 'set_name'
+    quoted_string = pp.dblQuotedString.copy().setName("quoted-string").setParseAction(unquote)
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:24
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:24: DeprecationWarning: 'setParseAction' deprecated - use 'set_parse_action'
+    quoted_string = pp.dblQuotedString.copy().setName("quoted-string").setParseAction(unquote)
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:25
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:25: DeprecationWarning: 'setName' deprecated - use 'set_name'
+    auth_param_name = token.copy().setName("auth-param-name").addParseAction(downcaseTokens)
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:25
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:25: DeprecationWarning: 'addParseAction' deprecated - use 'add_parse_action'
+    auth_param_name = token.copy().setName("auth-param-name").addParseAction(downcaseTokens)
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:27
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:27: DeprecationWarning: 'delimitedList' deprecated - use 'DelimitedList'
+    params = pp.Dict(pp.delimitedList(pp.Group(auth_param)))
+
+..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:33
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httplib2\auth.py:33: DeprecationWarning: 'delimitedList' deprecated - use 'DelimitedList'
+    www_authenticate = pp.delimitedList(pp.Group(challenge))
+
+tests/test_cleanup_memory.py::test_cleanup_memory_logic
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\maintenance_tasks.py:187: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.delete(n)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_cleanup_memory.py::test_cleanup_memory_logic
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\maintenance_tasks.py:199: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.delete(m)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_cleanup_relations.py::test_cleanup_weak_relations
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\maintenance_tasks.py:209: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.delete(r)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_feature_flags.py::test_sync_service_skips_disabled_provider
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:2191: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_graph_memory.py::test_generate_relations
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\reflection_tasks.py:71: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.add(memory)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_graph_memory.py::test_generate_relations
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\reflection_tasks.py:129: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.add(nr)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_hierarchical_context.py::test_hierarchical_context_content
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\tests\test_hierarchical_context.py:15: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    note = Note(id="current", user_id="u1", transcription_text="Hello", created_at=datetime.utcnow())
+
+tests/test_memory.py::test_reflection_logic
+tests/test_memory.py::test_reflection_logic
+tests/test_memory.py::test_reflection_logic
+tests/test_memory.py::test_reflection_logic
+tests/test_memory.py::test_reflection_logic
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\tests\test_memory.py:15: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow() - timedelta(days=i)
+
+tests/test_pipeline.py::test_pipeline_full_flow
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\context.py:2700: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    entities_collection.append(self)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_reflection.py::test_reflection_trigger
+  C:\Users\User\Documents\GitHub\voicebrain1\backend\workers\reflection_tasks.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+
+tests/test_security.py::test_rate_limit_health_exempt
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py:252: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    _iterencode = c_make_encoder(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_yandex_tasks.py::test_yandex_tasks_extraction
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:532: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def _mock_add_spec(self, spec, spec_set, _spec_as_instance=False,
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.13.1-final-0 _______________
+
+Name                                                Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------------
+app\__init__.py                                         0      0   100%
+app\api\__init__.py                                     0      0   100%
+app\api\dependencies.py                                23     13    43%   13-30
+app\api\middleware\auth.py                             18      7    61%   26-33
+app\api\middleware\rate_limit.py                        4      0   100%
+app\api\routers\__init__.py                             0      0   100%
+app\api\routers\admin.py                              197    130    34%   21-23, 59-75, 83-106, 127-160, 170-171, 180-210, 218-240, 258-259, 268-283, 291-300, 309-335, 343-355, 367-369, 378-401
+app\api\routers\auth.py                               125     89    29%   26-57, 61-74, 78-101, 105-115, 120-133, 137, 145-157, 167-204
+app\api\routers\exports.py                             73     51    30%   31-57, 73-99, 114-142, 155-185
+app\api\routers\feedback.py                            32     17    47%   25-68
+app\api\routers\integrations.py                       265    194    27%   20-27, 35-51, 59, 91-120, 134-144, 192-239, 252-299, 310-374, 386-397, 404-406, 415-417, 424-426, 435-437, 444-446, 454-456, 464-466, 474-476, 484-486, 494-496, 504-506, 514-516, 524-526, 534-536, 544-546, 554-567, 575-587
+app\api\routers\notes.py                              348    222    36%   34-189, 221, 231-233, 254-256, 308, 327-329, 346-366, 380-395, 406-408, 416-421, 430-465, 476, 480, 483, 499-515, 524-554, 563-582, 592-623, 638-658, 675
+app\api\routers\notifications.py                       23     10    57%   25-43
+app\api\routers\oauth.py                               83     63    24%   56-81, 86-181
+app\api\routers\payment.py                            142    111    22%   34-44, 57-73, 82-160, 168-245, 254-271
+app\api\routers\settings.py                            22      7    68%   24-31, 37
+app\api\routers\tags.py                                26     11    58%   18-26, 37-52, 61-76
+app\api\routers\users.py                               76     46    39%   35-146, 168-175, 185
+app\celery_app.py                                       8      0   100%
+app\core\__init__.py                                    0      0   100%
+app\core\analyze_core.py                              116     50    57%   14-24, 28-71, 75-87, 90-94, 144-146
+app\core\audio.py                                      62     47    24%   16-24, 27-36, 40-72, 76-99
+app\core\bot.py                                         3      0   100%
+app\core\intent_detection.py                           27     27     0%   1-65
+app\core\pricing.py                                    12     12     0%   4-33
+app\core\rag_service.py                                88     12    86%   23-25, 69, 90-92, 111-117, 121-123
+app\core\security.py                                   32      9    72%   16, 19, 22-29
+app\core\sync_service.py                              109     91    17%   26-75, 79-106, 118-133, 136-141, 144-148, 151-155, 158-162, 165-169
+app\core\types.py                                      28      0   100%
+app\main.py                                            47      4    91%   36-39, 45, 74
+app\models.py                                         191      8    96%   197-200, 205-208
+app\schemas.py                                        121      9    93%   15-23
+app\services\ai_service.py                            302    265    12%   26-85, 92, 109-138, 145-305, 321-388, 395-427, 433-475, 481-525, 531-576, 582-605
+app\services\integrations\__init__.py                  32      2    94%   60, 63
+app\services\integrations\amocrm.py                    83     72    13%   12-51, 54-172
+app\services\integrations\base.py                      27     11    59%   15, 29, 33-36, 40-48
+app\services\integrations\bitrix24.py                  37     31    16%   8-75
+app\services\integrations\clickup.py                   30     23    23%   9-55
+app\services\integrations\craft.py                     51     45    12%   8-131
+app\services\integrations\dropbox.py                   38     30    21%   10-72
+app\services\integrations\email.py                     36     29    19%   9-95
+app\services\integrations\email_service.py             74     28    62%   33-34, 40-45, 49-72, 86-87
+app\services\integrations\evernote.py                  47     36    23%   12-76, 80-81
+app\services\integrations\google_calendar.py           81     70    14%   12-52, 56-152
+app\services\integrations\google_drive.py              79     67    15%   13-51, 54-132
+app\services\integrations\google_fit.py               120    106    12%   15-39, 42-285
+app\services\integrations\google_maps_service.py       73     23    68%   21-61, 73, 91, 98, 103
+app\services\integrations\jira.py                      62     55    11%   9-115
+app\services\integrations\kaiten.py                    24     17    29%   10-58
+app\services\integrations\linear.py                    38     32    16%   8-78
+app\services\integrations\maps_service.py              64     11    83%   50, 60-61, 77-83, 104-106
+app\services\integrations\markdown_export.py           60     48    20%   14-23, 26-124
+app\services\integrations\microsoft_todo.py            46     39    15%   9-87
+app\services\integrations\notion.py                    97     87    10%   19-170
+app\services\integrations\obsidian_service.py          54     11    80%   18-23, 32, 64, 77-79
+app\services\integrations\readwise.py                  16     11    31%   8-24
+app\services\integrations\readwise_service.py          43      6    86%   24-29
+app\services\integrations\reflect.py                   39     32    18%   9-81
+app\services\integrations\slack.py                     39     33    15%   8-102
+app\services\integrations\tasks_service.py             70     26    63%   30-35, 39-64, 80-81
+app\services\integrations\ticktick.py                  47     39    17%   10-81
+app\services\integrations\todoist.py                   37     30    19%   10-55
+app\services\integrations\vk.py                        32     25    22%   10-61
+app\services\integrations\weeek.py                     38     31    18%   10-74
+app\services\integrations\yandex_disk.py               44     36    18%   10-77
+app\services\integrations\yandex_maps_service.py       73     23    68%   20-58, 69, 92-93, 99, 103
+app\services\integrations\yandex_tasks_service.py      57     10    82%   32-33, 40-45, 58-59
+app\services\integrations\zapier.py                    24     19    21%   8-55
+app\services\pipeline.py                              114     34    70%   29-30, 103-108, 131-152, 156-165
+app\services\readwise_service.py                       20     14    30%   12-39
+app\services\todoist_service.py                        66     51    23%   19-56, 62-99
+---------------------------------------------------------------------------------
+TOTAL                                                4615   2798    39%
+=========================== short test summary info ===========================
+FAILED tests/test_adaptive_learning.py::test_adaptive_learning_prompt_injection
+FAILED tests/test_analyze_hierarchical.py::test_hierarchical_context_integration
+FAILED tests/test_analyze_hierarchical.py::test_build_hierarchical_context - ...
+FAILED tests/test_cleanup.py::test_cleanup_notes - RuntimeError: You cannot u...
+FAILED tests/test_cleanup.py::test_cleanup_longterm - RuntimeError: You canno...
+FAILED tests/test_email.py::test_email_oauth_connect - AttributeError: 'corou...
+FAILED tests/test_feature_flags.py::test_sync_service_skips_disabled_provider
+FAILED tests/test_feature_flags.py::test_sync_service_skips_all - AttributeEr...
+FAILED tests/test_hierarchical_context.py::test_hierarchical_context_content
+FAILED tests/test_identity_core.py::test_identity_update_in_reflection - Asse...
+FAILED tests/test_identity_core.py::test_analyze_core_injects_identity - Type...
+FAILED tests/test_obsidian.py::test_obsidian_connect - AttributeError: 'corou...
+FAILED tests/test_readwise.py::test_readwise_connect - AttributeError: 'corou...
+FAILED tests/test_reflection.py::test_reflection_process - AssertionError: as...
+FAILED tests/test_security.py::test_rate_limit_trigger - AttributeError: modu...
+FAILED tests/test_security.py::test_robust_client_gives_up_after_max_attempts
+FAILED tests/test_tasks.py::test_connect_tasks - AttributeError: 'coroutine' ...
+FAILED tests/test_yandex_tasks.py::test_yandex_tasks_connect - AttributeError...
+ERROR tests/test_notes.py::test_notes_flow
+============ 18 failed, 50 passed, 33 warnings, 1 error in 13.31s =============
+pytest : <sys>:0: RuntimeWar
+ning: coroutine 'AsyncMockMi
+xin._execute_mock_call' was 
+never awaited
+строка:1 знак:1
++ pytest --cov=app --cov-rep
+ort=term-missing tests/ > fu
+ll_coverage_out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (<sys>  
+  :0: Runtim...s never aw   
+ aited:String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 

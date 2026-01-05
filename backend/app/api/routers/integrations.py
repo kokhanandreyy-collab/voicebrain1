@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy import update
 from typing import List, Optional
 from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from infrastructure.database import get_db
 from app.models import User, Integration
@@ -11,7 +12,6 @@ from app.schemas import IntegrationCreate, IntegrationResponse
 from app.api.dependencies import get_current_user
 
 router = APIRouter(
-    prefix="/integrations",
     tags=["integrations"]
 )
 
@@ -38,11 +38,11 @@ async def get_integrations(
     # Map to schema manually or use Pydantic with property
     response = []
     for i in integrations:
-        settings = i.settings or {}
+        settings = i.config or {}
         response.append({
             "id": i.id,
             "provider": i.provider,
-            "created_at": i.created_at,
+            "created_at": getattr(i, "created_at", datetime.now(timezone.utc)),
             "is_active": True, # Or check expiry
             "masked_settings": mask_settings(settings),
             "status": settings.get("status", "active"),
@@ -97,21 +97,21 @@ async def create_or_update_integration(
     existing = result.scalars().first()
     
     if existing:
-        existing.settings = integration_data.credentials # Using 'settings' column as 'credentials' was schema drift
+        existing.config = integration_data.credentials # Using 'settings' column as 'credentials' was schema drift
         await db.commit()
         await db.refresh(existing)
         return {
             "id": existing.id,
             "provider": existing.provider,
-            "created_at": existing.created_at,
+            "created_at": getattr(existing, "created_at", datetime.now(timezone.utc)),
             "is_active": True,
-            "masked_settings": mask_settings(existing.settings)
+            "masked_settings": mask_settings(existing.config)
         }
     else:
         new_int = Integration(
             user_id=current_user.id,
             provider=integration_data.provider,
-            settings=integration_data.credentials,
+            config=integration_data.credentials,
             access_token="mock_token" # Required by model
         )
         db.add(new_int)
@@ -120,9 +120,9 @@ async def create_or_update_integration(
         return {
             "id": new_int.id,
             "provider": new_int.provider,
-            "created_at": new_int.created_at,
+            "created_at": datetime.now(timezone.utc),
             "is_active": True,
-            "masked_settings": mask_settings(new_int.settings)
+            "masked_settings": mask_settings(new_int.config)
         }
 
 @router.delete("/{provider}", status_code=204)
@@ -139,7 +139,7 @@ async def delete_integration(
     )
     integration = result.scalars().first()
     if integration:
-        await db.delete(integration)
+        db.delete(integration) # Not awaitable
         await db.commit()
     return None
 
@@ -356,7 +356,7 @@ async def integration_callback(
             existing.encrypted_refresh_token = encrypt_token(token_data.get("refresh_token"))
 
         existing.expires_at = expires_at
-        existing.settings = settings_data
+        existing.config = settings_data
     else:
         new_int = Integration(
             user_id=current_user.id,
@@ -366,7 +366,7 @@ async def integration_callback(
             encrypted_access_token=encrypt_token(token_data.get("access_token")),
             encrypted_refresh_token=encrypt_token(token_data.get("refresh_token")),
             expires_at=expires_at,
-            settings=settings_data
+            config=settings_data
         )
         db.add(new_int)
     
@@ -548,40 +548,35 @@ async def yandex_tasks_callback(
 @router.post("/2gis/connect")
 async def connect_2gis(
     token: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Connect 2GIS account."""
-    async with AsyncSessionLocal() as db:
-        # Simplified storage
-        from app.models import Integration
-        from sqlalchemy.future import select
-        from app.core.security import encrypt_token
-        
-        result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "2gis"))
-        it = result.scalars().first()
-        if not it:
-            it = Integration(user_id=current_user.id, provider="2gis")
-            db.add(it)
-        it.twogis_token = encrypt_token(token)
-        await db.commit()
+    from app.core.security import encrypt_token
+    
+    result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "2gis"))
+    it = result.scalars().first()
+    if not it:
+        it = Integration(user_id=current_user.id, provider="2gis")
+        db.add(it)
+    it.twogis_token = encrypt_token(token)
+    await db.commit()
     return {"status": "Connected to 2GIS"}
 
 @router.post("/mapsme/connect")
 async def connect_mapsme(
     path: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Connect Maps.me by providing KML path."""
-    async with AsyncSessionLocal() as db:
-        from app.models import Integration
-        from sqlalchemy.future import select
-        from app.core.security import encrypt_token
-        
-        result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "mapsme"))
-        it = result.scalars().first()
-        if not it:
-            it = Integration(user_id=current_user.id, provider="mapsme")
-            db.add(it)
-        it.mapsme_path = encrypt_token(path)
-        await db.commit()
+    from app.core.security import encrypt_token
+    
+    result = await db.execute(select(Integration).where(Integration.user_id == current_user.id, Integration.provider == "mapsme"))
+    it = result.scalars().first()
+    if not it:
+        it = Integration(user_id=current_user.id, provider="mapsme")
+        db.add(it)
+    it.mapsme_path = encrypt_token(path)
+    await db.commit()
     return {"status": "Connected to Maps.me vault"}

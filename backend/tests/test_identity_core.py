@@ -32,9 +32,9 @@ async def test_identity_update_in_reflection(mock_db_session):
          patch("workers.reflection_tasks.AsyncSessionLocal") as mock_session_cls:
          
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session # Context manager mock
-         mock_ai.get_chat_completion.return_value = json_resp
+         mock_ai.get_chat_completion = AsyncMock(return_value=json_resp)
          mock_ai.clean_json_response.return_value = json_resp
-         mock_ai.get_embedding.return_value = [0.1] * 1536
+         mock_ai.get_embedding = AsyncMock(return_value=[0.1] * 1536)
          
          await _process_reflection_async(user_id)
          
@@ -57,8 +57,11 @@ async def test_analyze_core_injects_identity():
     with patch("app.core.analyze_core.ai_service") as mock_ai, \
          patch("app.core.analyze_core.rag_service") as mock_rag:
          
-         mock_rag.build_hierarchical_context.return_value = "RAG Context"
-         mock_ai.analyze_text.return_value = {"title": "Analyzed", "summary": "X"}
+         mock_rag.build_hierarchical_context = AsyncMock(return_value="RAG Context")
+         mock_ai.analyze_text = AsyncMock(return_value={"title": "Analyzed", "summary": "X"})
+         mock_rag.embed_note = AsyncMock()
+         mock_memory.get_history = AsyncMock(return_value=[])
+         mock_memory.add_action = AsyncMock()
          
          await analyze_core.analyze_step(note, user, mock_db, mock_memory)
          

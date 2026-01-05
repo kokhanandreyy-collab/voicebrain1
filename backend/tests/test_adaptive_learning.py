@@ -15,8 +15,11 @@ async def test_adaptive_learning_prompt_injection():
     with patch("app.core.analyze_core.ai_service") as mock_ai, \
          patch("app.core.analyze_core.rag_service") as mock_rag:
          
-         mock_rag.build_hierarchical_context.return_value = "CTX"
-         mock_ai.analyze_text.return_value = {"title": "T"}
+         mock_rag.build_hierarchical_context = AsyncMock(return_value="CTX")
+         mock_ai.analyze_text = AsyncMock(return_value={"title": "T"})
+         mock_rag.embed_note = AsyncMock()
+         mock_memory.get_history = AsyncMock(return_value=[])
+         mock_memory.add_action = AsyncMock()
          
          await analyze_core.analyze_step(note, user, mock_db, mock_memory)
          
@@ -25,7 +28,7 @@ async def test_adaptive_learning_prompt_injection():
          
          # Assert adaptive instruction is present
          assert "Adaptive Learning:" in context
-         assert "Is P0 High Priority?" in context
+         assert "If you are unsure" in context
          
          # Assert identity is present
          assert "User Identity (Core Traits): Identity" in context

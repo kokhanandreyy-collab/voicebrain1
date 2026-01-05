@@ -52,7 +52,15 @@ async def test_obsidian_note_generation():
         # Handle the integration lookup mock carefully as it's a chained call in my code
         # Actually my code is integration = int_res.scalars().first()
         mock_int_res = MagicMock()
+        mock_int_res.scalars = MagicMock()
         mock_int_res.scalars.return_value.first.return_value = mock_int
+        
+        mock_res_sim.scalars = MagicMock()
+        mock_res_sim.scalars.return_value.all.return_value = [mock_similar_note]
+        
+        mock_res_note.scalars = MagicMock()
+        mock_res_note.scalars.return_value.first.return_value = mock_note
+        
         mock_session.execute.side_effect = [mock_int_res, mock_res_sim, mock_res_note]
 
         res = await obsidian_service.create_or_update_note(user_id, note_id, text)
@@ -71,7 +79,10 @@ async def test_obsidian_connect():
     with patch("app.services.integrations.obsidian_service.AsyncSessionLocal") as mock_db:
         mock_session = AsyncMock()
         mock_db.return_value.__aenter__.return_value = mock_session
-        mock_session.execute.return_value.scalars.return_value.first.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalars = MagicMock()
+        mock_result.scalars.return_value.first.return_value = None
+        mock_session.execute.return_value = mock_result
         
         res = await obsidian_service.connect("u1", "/path/to/vault")
         assert res == "Connected to Obsidian vault"

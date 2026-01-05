@@ -8,6 +8,7 @@ from app.celery_app import celery
 from app.models import Note, User
 from infrastructure.database import AsyncSessionLocal
 from app.core.audio import audio_processor
+from sqlalchemy.exc import OperationalError
 
 # Kept steps here or use audio processor?
 # If I remove steps here, I might break imports in pipeline IF pipeline was importing from here.
@@ -18,7 +19,7 @@ async def _process_transcribe_async(note_id: str) -> None:
     from app.services.pipeline import pipeline
     await pipeline.process(note_id)
 
-@celery.task(name="transcribe.process_note")
+@celery.task(name="transcribe.process_note", autoretry_for=(OperationalError, OSError), retry_backoff=True, max_retries=3)
 def process_transcribe(note_id: str):
     async_to_sync(_process_transcribe_async)(note_id)
     return {"status": "processing_started", "note_id": note_id}

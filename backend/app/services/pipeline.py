@@ -1,6 +1,7 @@
 from loguru import logger
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import OperationalError
 from asgiref.sync import async_to_sync
 
 from app.models import Note, User, NoteStatus
@@ -12,6 +13,8 @@ from infrastructure.redis_client import short_term_memory
 # Core Business Logic
 from app.core.analyze_core import analyze_core
 from app.core.audio import audio_processor
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import httpx
 
 class NotePipeline:
     async def process(self, note_id: str):
@@ -30,20 +33,47 @@ class NotePipeline:
                     return
 
                 # --- STAGE 1: TRANSCRIBE ---
-                if note.status == NoteStatus.PENDING or not note.transcription_text:
-                    await self._run_transcribe_stage(note, db)
-                
+                try:
+                    if note.status == NoteStatus.PENDING or not note.transcription_text:
+                        await self._run_transcribe_stage(note, db)
+                except Exception as e:
+                    logger.error(f"[Pipeline] Transcription stage failed: {e}")
+                    note.status = NoteStatus.FAILED
+                    note.processing_step = f"Transcription Failed: {str(e)[:50]}"
+                    await db.commit()
+                    return # Stop pipeline if transcription fails
+
                 # --- STAGE 2: ANALYZE ---
-                if note.status == NoteStatus.PROCESSING or (note.transcription_text and not note.ai_analysis):
-                    await self._run_analyze_stage(note, db)
+                try:
+                    if note.status == NoteStatus.PROCESSING or (note.transcription_text and not note.ai_analysis):
+                        await self._run_analyze_stage(note, db)
+                except Exception as e:
+                    logger.error(f"[Pipeline] Analysis stage failed: {e}")
+                    note.status = NoteStatus.FAILED
+                    note.processing_step = f"Analysis Failed: {str(e)[:50]}"
+                    await db.commit()
+                    return # Stop pipeline if analysis fails
 
                 # --- STAGE 3: SYNC ---
-                if note.status == NoteStatus.ANALYZED or (note.ai_analysis and note.status != NoteStatus.COMPLETED):
-                    await self._run_sync_stage(note, db)
+                try:
+                    if note.status == NoteStatus.ANALYZED or (note.ai_analysis and note.status != NoteStatus.COMPLETED):
+                        await self._run_sync_stage(note, db)
+                except Exception as e:
+                    logger.error(f"[Pipeline] Sync stage failed: {e}")
+                    # Non-fatal? Maybe. But let's mark as completed with warning or just log.
+                    # We'll mark as COMPLETED but logging the error in step
+                    note.status = NoteStatus.COMPLETED
+                    note.processing_step = f"Sync Failed (Saved Locally): {str(e)[:50]}"
+                    await db.commit()
 
                 logger.info(f"[Pipeline] Completed processing for note: {note_id}")
 
             except Exception as e:
+                # Re-raise transient errors for Celery retry
+                if isinstance(e, (OperationalError, OSError)):
+                    logger.warning(f"[Pipeline] Transient error for {note_id}: {e}. Retrying...")
+                    raise e
+                
                 logger.error(f"[Pipeline] Failed processing note {note_id}: {e}")
                 import traceback
                 traceback.print_exc()
@@ -54,6 +84,8 @@ class NotePipeline:
                 note.processing_step = f"Error: {error_msg}"
                 await db.commit()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10),
+           retry=retry_if_exception_type((httpx.RequestError, ConnectionError, TimeoutError, OSError)))
     async def _run_transcribe_stage(self, note: Note, db: AsyncSession):
         logger.info(f"--- Stage 1: Transcribe ({note.id}) ---")
         note.status = NoteStatus.PROCESSING
@@ -76,6 +108,8 @@ class NotePipeline:
         
         await db.commit()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10),
+           retry=retry_if_exception_type((httpx.RequestError, ConnectionError, TimeoutError, OSError)))
     async def _run_analyze_stage(self, note: Note, db: AsyncSession):
         logger.info(f"--- Stage 2: Analyze ({note.id}) ---")
         note.processing_step = "AI Analysis..."
@@ -91,6 +125,8 @@ class NotePipeline:
         note.status = NoteStatus.ANALYZED
         await db.commit()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10),
+           retry=retry_if_exception_type((httpx.RequestError, ConnectionError, TimeoutError, OSError)))
     async def _run_sync_stage(self, note: Note, db: AsyncSession):
         logger.info(f"--- Stage 3: Sync ({note.id}) ---")
         

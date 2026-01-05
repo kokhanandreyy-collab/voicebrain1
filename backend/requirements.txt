@@ -33,3 +33,4 @@ psycopg2-binary
 pytest
 pytest-asyncio
 aiogram
+tenacity

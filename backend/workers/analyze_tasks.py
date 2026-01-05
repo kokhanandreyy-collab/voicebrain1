@@ -9,12 +9,13 @@ from app.services.ai_service import ai_service
 from app.models import Note, User, NoteEmbedding
 from infrastructure.database import AsyncSessionLocal
 from app.core.types import AIAnalysisPack
+from sqlalchemy.exc import OperationalError
 
 async def _process_analyze_async(note_id: str) -> None:
     from app.services.pipeline import pipeline
     await pipeline.process(note_id)
 
-@celery.task(name="analyze.process_note")
+@celery.task(name="analyze.process_note", autoretry_for=(OperationalError, OSError), retry_backoff=True, max_retries=3)
 def process_analyze(note_id: str):
     async_to_sync(_process_analyze_async)(note_id)
     return {"status": "analysis_restarted", "note_id": note_id}

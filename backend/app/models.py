@@ -199,6 +199,16 @@ class Integration(Base):
             return decrypt_token(self.encrypted_access_token)
         return self.access_token
 
+    @auth_token.setter
+    def auth_token(self, value: str):
+        from app.core.security import encrypt_token
+        if value:
+            self.encrypted_access_token = encrypt_token(value)
+            self.access_token = "encrypted" # Placeholder or keep legacy
+        else:
+            self.encrypted_access_token = None
+            self.access_token = ""
+
     @property
     def auth_refresh_token(self) -> Optional[str]:
         """Returns decrypted refresh token. Fallback to plaintext for migration."""
@@ -206,6 +216,16 @@ class Integration(Base):
         if self.encrypted_refresh_token:
             return decrypt_token(self.encrypted_refresh_token)
         return self.refresh_token
+
+    @auth_refresh_token.setter
+    def auth_refresh_token(self, value: str):
+        from app.core.security import encrypt_token
+        if value:
+            self.encrypted_refresh_token = encrypt_token(value)
+            self.refresh_token = "encrypted"
+        else:
+            self.encrypted_refresh_token = None
+            self.refresh_token = ""
 
 class IntegrationLog(Base):
     __tablename__ = "integration_logs"

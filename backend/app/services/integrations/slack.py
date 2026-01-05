@@ -13,7 +13,7 @@ class SlackIntegration(BaseIntegration):
         
         # Determine Channel
         explicit_folder = (note.ai_analysis or {}).get("explicit_folder")
-        channel_id = explicit_folder or (integration.settings or {}).get("target_channel_id")
+        channel_id = explicit_folder or (integration.config or {}).get("target_channel_id")
         
         if not channel_id:
              self.logger.warning("No target_channel_id configured. Attempting to default to '#general'.")

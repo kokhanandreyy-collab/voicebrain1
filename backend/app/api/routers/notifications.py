@@ -25,7 +25,7 @@ async def subscribe(
     subs = current_user.push_subscriptions or []
     
     # Check if exists (by endpoint)
-    sub_data = subscription.dict()
+    sub_data = subscription.model_dump()
     
     # Filter out if already exists to avoid duplicates
     # Use endpoint as unique identifier

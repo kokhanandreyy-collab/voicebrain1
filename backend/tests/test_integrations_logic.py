@@ -3,6 +3,10 @@ import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 from app.models import Integration, Note
 from app.services.integrations.notion import NotionIntegration
+from app.services.integrations.google_calendar import GoogleCalendarIntegration
+from app.services.integrations.slack import SlackIntegration
+from aiogoogle import Aiogoogle
+from slack_sdk.web.async_client import AsyncWebClient
 
 @pytest.fixture
 def notion_integration():

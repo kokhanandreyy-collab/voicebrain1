@@ -16,12 +16,20 @@ redis.asyncio.Redis.from_url = MagicMock(return_value=mock_redis_obj)
 redis.from_url = MagicMock()
 redis.Redis.from_url = MagicMock()
 
-# Mock before app imports
 import types
 def mock_package(name):
     m = MagicMock()
     m.__path__ = []
+    # Make sure it behaves like a module?
+    # MagicMock is flexible enough usually.
     sys.modules[name] = m
+    
+    # Link to parent if exists
+    if "." in name:
+        parent_name, child_name = name.rsplit(".", 1)
+        if parent_name in sys.modules:
+            setattr(sys.modules[parent_name], child_name, m)
+            
     return m
 
 mock_package("fastapi_mail")
@@ -34,6 +42,8 @@ mock_package("evernote.edam.notestore.ttypes")
 mock_package("evernote.api")
 mock_package("evernote.api.client")
 mock_package("oauth2")
+
+# Notion
 mock_package("notion_client")
 m_errors = mock_package("notion_client.errors")
 class MockAPIResponseError(Exception):
@@ -42,9 +52,33 @@ class MockAPIResponseError(Exception):
         self.code = "validation_error"
 m_errors.APIResponseError = MockAPIResponseError
 
+# Todoist
 mock_package("todoist_api_python")
 mock_package("todoist_api_python.api")
 mock_package("todoist_api_python.api_async")
+
+# Google & Slack
+m_aiogoogle = mock_package("aiogoogle")
+m_aiogoogle.Aiogoogle = MagicMock()
+mock_package("aiogoogle.auth")
+mock_package("aiogoogle.auth.creds")
+mock_package("aiogoogle.models")
+
+mock_package("slack_sdk")
+mock_package("slack_sdk.web")
+m_slack = mock_package("slack_sdk.web.async_client")
+m_slack.AsyncWebClient = MagicMock()
+
+# Other Integrations
+mock_package("jira")
+mock_package("dropbox")
+mock_package("amocrm")
+mock_package("amocrm.v2")
+mock_package("vk_api")
+mock_package("googleapiclient")
+mock_package("googleapiclient.discovery")
+mock_package("googleapiclient.http")
+mock_package("msal")
 
 # Global mock for RateLimiter to avoid connection issues and identifier being None
 from fastapi_limiter.depends import RateLimiter

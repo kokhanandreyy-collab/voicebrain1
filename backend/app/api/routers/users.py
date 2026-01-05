@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, desc, case
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from infrastructure.database import get_db
 from app.models import User, Note, IntegrationLog, Plan, UserTier
@@ -11,7 +11,6 @@ from app.api.dependencies import get_current_user
 from pydantic import BaseModel
 
 router = APIRouter(
-    prefix="/users",
     tags=["users"]
 )
 
@@ -65,7 +64,7 @@ async def get_user_stats(
         elif current_user.tier == 'premium': limit_minutes = float('inf')
         
     # 4. Balance / Renewal
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     # Assume billing_cycle_start is set. If not, default to created_at or now.
     cycle_start = current_user.billing_cycle_start or current_user.created_at or now
     

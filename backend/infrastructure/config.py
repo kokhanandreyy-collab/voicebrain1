@@ -9,7 +9,12 @@ class Settings(BaseSettings):
     SECRET_KEY: Optional[str] = None
     ENCRYPTION_KEY: Optional[str] = None
     VITE_APP_URL: str = "http://localhost:5173"
-    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    # Comma-separated list of origins. In prod, set to: "https://voicebrain.app,https://web.telegram.org"
+    ALLOWED_ORIGINS: str = "http://localhost:5173" 
+    
+    # Limits
+    MAX_UPLOAD_SIZE_MB: int = 50
+    RATE_LIMIT_GLOBAL: str = "100/minute"
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod

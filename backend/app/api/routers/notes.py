@@ -29,30 +29,40 @@ async def upload_note(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Manual Rate Limiting for Tier-based logic (simpler than hacking Depends check)
+    # Manual Rate Limiting for Tier-based logic
     # Check limit key in Redis: "limit:upload:{user_id}"
     from fastapi_limiter import FastAPILimiter
-    import redis.asyncio as redis
     
-    # 10/hr (Free), 50/hr (Pro)
+    # 1. Validation
+    # File Type
+    allowed_types = ["audio/mpeg", "audio/wav", "audio/x-m4a", "audio/mp4", "audio/webm", "audio/ogg", "video/mp4"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}")
+        
+    # File Size (Approx check via header)
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"File too large. Max size is {settings.MAX_UPLOAD_SIZE_MB}MB")
+
+    # 2. Rate Limit
     limit = 10 if current_user.tier == "free" else 50
     key = f"limit/upload/{current_user.id}"
     
     redis_conn = FastAPILimiter.redis
-    # Provide a fallback if redis not connected
     if redis_conn:
         try:
-             # p_expire is ms
-             # incr returns the new value
+             # p_expire is ms, expire is seconds
              current_usage = await redis_conn.incr(key)
              if current_usage == 1:
-                 await redis_conn.expire(key, 3600)
+                 await redis_conn.expire(key, 3600) # 1 hour window
              
              if current_usage > limit:
                  ttl = await redis_conn.ttl(key)
-                 raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Try again in {ttl} seconds.")
+                 raise HTTPException(status_code=429, detail=f"Upload rate limit exceeded ({limit}/hr). Try again in {ttl} seconds.")
+        except HTTPException:
+             raise
         except Exception as e:
-             # If redis fails, we log and allow (fail open) or block
+             # Fail open if redis is down, but log
              print(f"Rate limit check failed: {e}")
     
     # ... existing code ...
@@ -336,7 +346,7 @@ async def ask_ai(
 
 from fastapi.responses import StreamingResponse
 
-@router.post("/ask/stream", dependencies=[Depends(RateLimiter(times=20, seconds=3600))])
+@router.post("/ask/stream", dependencies=[Depends(RateLimiter(times=50, seconds=3600))])
 async def ask_ai_stream(
     req: AskRequest,
     current_user: User = Depends(get_current_user),
@@ -370,7 +380,7 @@ async def ask_ai_stream(
     
 
 
-@router.post("/search/voice", response_model=List[NoteResponse])
+@router.post("/search/voice", response_model=List[NoteResponse], dependencies=[Depends(RateLimiter(times=30, seconds=60))])
 async def search_voice(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -394,7 +404,7 @@ async def search_voice(
     )
     return result.scalars().all()
 
-@router.post("/transcribe")
+@router.post("/transcribe", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
 async def transcribe_audio_only(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)

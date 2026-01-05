@@ -73,6 +73,16 @@ async def startup():
     # Initialize Global HTTP Client
     http_client.start()
 
+    # Initialize Redis for FastAPI Limiter
+    import redis.asyncio as redis
+    from fastapi_limiter import FastAPILimiter
+    try:
+        redis_connection = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+        await FastAPILimiter.init(redis_connection)
+        print("Rate Limiter (FastAPI-Limiter) connected to Redis")
+    except Exception as e:
+        print(f"Warning: Redis not available for Rate Limiter: {e}")
+
     # Rate Limiter is now handled by slowapi via middleware/limiter.py
     print("Rate Limiter (slowapi) active")
          

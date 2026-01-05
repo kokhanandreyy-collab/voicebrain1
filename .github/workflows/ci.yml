@@ -1,0 +1,67 @@
+name: VoiceBrain CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff black pytest pytest-asyncio pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Lint with Ruff
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        ruff check . --select=E9,F63,F7,F82 --target-version=py311
+        # Default ruff checks (optional: add --exit-non-zero-on-fix to enforce)
+        ruff check . --exit-zero
+
+    - name: Check formatting with Black
+      run: |
+        black . --check --diff
+
+    - name: Run Tests
+      run: |
+        pytest tests/ --cov=app --cov-report=term-missing
+
+  build-docker:
+    needs: test-backend
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Backend Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: false # Set to true if Docker Hub credentials are added
+        tags: voicebrain-backend:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

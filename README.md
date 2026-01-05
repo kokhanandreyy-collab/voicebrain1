@@ -1,5 +1,10 @@
 # VoiceBrain
 
+![CI](https://github.com/kokhanandreyy-collab/voicebrain1/actions/workflows/ci.yml/badge.svg)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
+![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 VoiceBrain is an advanced voice-first AI agent that captures, transcribes, analyzes, and organizes your voice notes. It features an adaptive memory system, Retrieval-Augmented Generation (RAG) for context-aware analysis, and integrations with popular tools (Notion, Google Calendar, Slack, etc.).
 
 ## 🚀 Key Features

@@ -17,6 +17,19 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import httpx
 
 class NotePipeline:
+    """
+    Orchestrates the lifecycle of a Voice Note processing job.
+
+    Stages:
+    1. Transcribe: Audio -> Text (via AssemblyAI/DeepSeek/local whisper).
+    2. Analyze: Text -> Structured Insights (Intent, Action Items, Summary) + RAG Context.
+    3. Sync: Insights -> External Tools (Notion, Slack, etc.) + Notifications.
+
+    Features:
+    - Fault Tolerance: Each stage is isolated; failures don't crash the worker.
+    - Resilience: Uses `tenacity` for retrying transient network/API errors.
+    - Monitoring: detailed logging and status updates to the Note model.
+    """
     async def process(self, note_id: str):
         """
         Orchestration: Transcribe -> Analyze (Intent+RAG) -> Sync

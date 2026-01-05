@@ -8,7 +8,11 @@ from app.api.middleware.auth import AuthMiddleware
 from infrastructure.rate_limit import limiter
 from infrastructure.config import settings
 
-app = FastAPI(title="VoiceBrain API")
+app = FastAPI(
+    title="VoiceBrain API",
+    description="Backend API for VoiceBrain - The Adaptive AI Voice Assistant.\n\nFeatures:\n- Voice Transcription & Analysis\n- RAG-based Memory System\n- Integrations (Notion, Slack, GCal)\n- Adaptive Personalization",
+    version="1.0.0"
+)
 
 # Secure CORS
 origins = settings.ALLOWED_ORIGINS.split(",")

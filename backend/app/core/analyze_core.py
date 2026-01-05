@@ -9,6 +9,14 @@ from app.models import Note, User, NoteEmbedding, LongTermMemory, NoteRelation
 from app.core.types import AIAnalysisPack
 
 class RagService:
+    """
+    Manages the Retrieval-Augmented Generation (RAG) context construction.
+
+    Implements a hierarchical memory lookup:
+    1. Short-Term: Recent actions from Redis.
+    2. Medium-Term: Vector Similarity (pgvector) + Note Graph (1-hop relations).
+    3. Long-Term: Summarized high-importance memories from the `long_term_memory` table.
+    """
     async def embed_note(self, note: Note, db: AsyncSession) -> None:
         """Generates embedding for the note and saves it."""
         text_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
@@ -100,6 +108,15 @@ class RagService:
 rag_service = RagService()
 
 class AnalyzeCore:
+    """
+    Core Intelligence Engine for VoiceBrain.
+
+    Responsibilities:
+    1. Context Assembly: Combines User Identity, Adaptive Preferences, and RAG context.
+    2. AI Processing: Calls LLM to extract intent, summary, and action items.
+    3. Adaptive Learning: Updates user identity and preferences based on analysis results.
+    4. Feedback Loop: Identifies ambiguity to ask clarifying questions.
+    """
     async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
         """
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save

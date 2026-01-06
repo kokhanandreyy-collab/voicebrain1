@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.ai_service import ai_service
 from app.models import Note, User, NoteEmbedding, LongTermMemory, NoteRelation
 from app.core.types import AIAnalysisPack
+from infrastructure.metrics import track_cache_hit, track_cache_miss
 
 class RagService:
     """
@@ -171,11 +172,13 @@ class AnalyzeCore:
             cached_entry = cache_res.scalars().first()
             
             if cached_entry:
-                logger.info(f"[Cache] Hit for note {note.id}")
+                logger.info(f"Cache hit for note {note.id}")
+                track_cache_hit("note_analysis")
                 cached_result = cached_entry.result
                 cache_hit = True
             else:
-                logger.info(f"[Cache] Miss for note {note.id}")
+                logger.info(f"Cache miss for note {note.id}")
+                track_cache_miss("note_analysis")
                 
         except Exception as e:
             logger.warning(f"[Cache] Lookup failed: {e}")

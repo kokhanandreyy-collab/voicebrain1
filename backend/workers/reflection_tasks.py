@@ -8,6 +8,7 @@ import datetime
 from infrastructure.database import AsyncSessionLocal
 from app.models import User, Note, LongTermMemory
 from app.services.ai_service import ai_service
+from infrastructure.metrics import track_cache_hit, track_cache_miss
 
 async def _process_reflection_async(user_id: str):
     logger.info(f"Starting reflection for user {user_id}")
@@ -55,11 +56,13 @@ async def _process_reflection_async(user_id: str):
             cached_entry = cache_res.scalars().first()
             
             if cached_entry:
-                logger.info(f"[Reflection Cache] Hit for user {user_id}")
+                logger.info(f"Cache hit for user reflection {user_id}")
+                track_cache_hit("reflection")
                 reflection_data = cached_entry.result
                 reflection_cache_hit = True
             else:
-                logger.info(f"[Reflection Cache] Miss for user {user_id}")
+                logger.info(f"Cache miss for user reflection {user_id}")
+                track_cache_miss("reflection")
         except Exception as e:
             logger.warning(f"[Reflection Cache] Lookup failed: {e}")
 

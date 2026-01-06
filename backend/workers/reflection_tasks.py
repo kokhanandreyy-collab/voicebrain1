@@ -25,9 +25,44 @@ async def _process_reflection_async(user_id: str):
             logger.info("No notes found for reflection.")
             return
 
-        # 2. Build Prompt
+        # 2. Build Cache Key / Context
         notes_text = "\n\n".join([f"Date: {n.created_at}\nText: {n.transcription_text[:1000]}" for n in notes])
         
+        # 2.5 Semantic Cache Check (Task 1)
+        from app.models import CachedAnalysis
+        import datetime
+        import json
+        
+        reflection_cache_hit = False
+        reflection_data = None
+        context_embedding = None
+        
+        try:
+            # Use combined notes text as semantic context
+            context_embedding = await ai_service.generate_embedding(notes_text[:5000]) # Cap for embedding efficiency
+            
+            # Search cache: threshold 0.85 similarity -> 0.15 distance
+            cache_res = await db.execute(
+                select(CachedAnalysis)
+                .where(
+                    CachedAnalysis.user_id == user_id,
+                    CachedAnalysis.embedding.cosine_distance(context_embedding) < 0.15,
+                    CachedAnalysis.expires_at > datetime.datetime.now(datetime.timezone.utc)
+                )
+                .order_by(CachedAnalysis.embedding.cosine_distance(context_embedding))
+                .limit(1)
+            )
+            cached_entry = cache_res.scalars().first()
+            
+            if cached_entry:
+                logger.info(f"[Reflection Cache] Hit for user {user_id}")
+                reflection_data = cached_entry.result
+                reflection_cache_hit = True
+            else:
+                logger.info(f"[Reflection Cache] Miss for user {user_id}")
+        except Exception as e:
+            logger.warning(f"[Reflection Cache] Lookup failed: {e}")
+
         prompt = (
             "Обобщи ключевые события, проекты, стиль общения, привычки, изменения пользователя. "
             "Сделай краткий summary (200–400 слов). Оцени важность 0–10 (где 10 = критически важное, меняющее жизнь событие). "
@@ -36,20 +71,35 @@ async def _process_reflection_async(user_id: str):
             f"\n\nПоследние заметки пользователя:\n{notes_text}"
         )
         
-        # 3. Call DeepSeek
+        # 3. Call DeepSeek or use Cached
         try:
-             import json
-             response_text = await ai_service.get_chat_completion([
-                 {"role": "system", "content": "You are a helpful assistant. Return ONLY valid JSON in Russian."},
-                 {"role": "user", "content": prompt}
-             ])
-             
-             cleaned = ai_service.clean_json_response(response_text)
-             try:
-                 data = json.loads(cleaned)
-             except json.JSONDecodeError:
-                 logger.error(f"Reflection JSON Decode Error: {response_text}")
-                 return
+             if reflection_cache_hit and reflection_data:
+                 data = reflection_data
+             else:
+                 response_text = await ai_service.get_chat_completion([
+                     {"role": "system", "content": "You are a helpful assistant. Return ONLY valid JSON in Russian."},
+                     {"role": "user", "content": prompt}
+                 ])
+                 
+                 cleaned = ai_service.clean_json_response(response_text)
+                 try:
+                     data = json.loads(cleaned)
+                 except json.JSONDecodeError:
+                     logger.error(f"Reflection JSON Decode Error: {response_text}")
+                     return
+                 
+                 # Save to Cache (Task 2: 7 day TTL)
+                 try:
+                    if context_embedding:
+                        ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
+                        db.add(CachedAnalysis(
+                            user_id=user_id,
+                            embedding=context_embedding,
+                            result=data,
+                            expires_at=ttl
+                        ))
+                 except Exception as cache_save_err:
+                    logger.warning(f"[Reflection Cache] Save failed: {cache_save_err}")
 
              summary = data.get("summary", "")
              identity = data.get("identity_summary", "")

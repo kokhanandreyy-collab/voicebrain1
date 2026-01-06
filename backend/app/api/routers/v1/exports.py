@@ -13,13 +13,13 @@ import zipfile
 
 router = APIRouter(
     prefix="/exports",
-    tags=["exports"]
+    tags=["Exports"]
 )
 
 class BatchExportRequest(BaseModel):
     note_ids: List[str]
 
-@router.post("/batch")
+@router.post("/batch", summary="Batch Export Notes", description="Export a selected group of notes as a ZIP file containing individual Markdown documents.")
 async def export_batch_zip(
     req: BatchExportRequest,
     current_user: User = Depends(get_current_user),
@@ -60,7 +60,7 @@ async def export_batch_zip(
         headers={"Content-Disposition": f"attachment; filename=voicebrain_export_batch.zip"}
     )
 
-@router.get("/{note_id}/markdown")
+@router.get("/{note_id}/markdown", summary="Export Note (Markdown)", description="Download a single note in Markdown format with YAML frontmatter for Obsidian/Logseq compatibility.")
 async def export_markdown(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -102,7 +102,7 @@ summary: "{note.summary.replace('"', '\\"')}"
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
-@router.get("/{note_id}/tana")
+@router.get("/{note_id}/tana", summary="Export Note (Tana)", description="Export a note in Tana Paste format, preserving structure and tags for seamless Tana integration.")
 async def export_tana(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -144,7 +144,7 @@ async def export_tana(
         media_type="text/plain"
     )
 
-@router.get("/all")
+@router.get("/all", summary="Full Data Export", description="Download a complete JSON export of all your notes and account metadata for data portability.")
 async def export_all_data(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

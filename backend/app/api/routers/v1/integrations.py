@@ -81,7 +81,7 @@ async def get_integrations_config():
         { "id": 'vk', "name": 'VKontakte', "category": "Communication", "desc": 'Publish notes to your VK Wall.', "bg": 'bg-blue-600', "text": 'text-white', "icon": 'VK' },
     ]
 
-@router.post("", response_model=IntegrationResponse)
+@router.post("", response_model=IntegrationResponse, summary="Create/Update Integration", description="Configure credentials for an external provider. Overwrites existing config if the provider is already linked.")
 async def create_or_update_integration(
     integration_data: IntegrationCreate,
     current_user: User = Depends(get_current_user),
@@ -125,7 +125,7 @@ async def create_or_update_integration(
             "masked_settings": mask_settings(new_int.config)
         }
 
-@router.delete("/{provider}", status_code=204)
+@router.delete("/{provider}", status_code=204, summary="Remove Integration", description="Disconnect an external provider and delete its configuration/tokens.")
 async def delete_integration(
     provider: str,
     current_user: User = Depends(get_current_user),
@@ -184,8 +184,8 @@ INTEGRATION_CONFIG = {
     }
 }
 
-@router.get("/{provider}/auth-url")
-async def get_auth_url(provider: str):
+@router.get("/{provider}/auth-url", summary="Get OAuth URL", description="Generates a provider-specific OAuth2 authorization URL for the user to visit.")
+async def get_auth_url(
     """
     Returns the real OAuth2 URL for the given provider.
     """
@@ -298,7 +298,7 @@ async def exchange_oauth_code(provider: str, code: str, referer: Optional[str] =
         
         return data
 
-@router.post("/callback")
+@router.post("/callback", summary="OAuth Callback Handler", description="Processes the OAuth2 code from a provider, exchanges it for tokens, and persists the integration.")
 async def integration_callback(
     data: CallbackRequest,
     current_user: User = Depends(get_current_user),
@@ -376,8 +376,8 @@ async def integration_callback(
 class KaitenAuth(BaseModel):
     api_key: str
 
-@router.post("/kaiten/boards")
-async def fetch_kaiten_boards(auth: KaitenAuth):
+@router.post("/kaiten/boards", summary="Fetch Kaiten Boards", description="Utility to list available boards for a connected Kaiten account using an API key.")
+async def fetch_kaiten_boards(
     """
     Fetch available boards from Kaiten.
     """
@@ -395,7 +395,7 @@ async def fetch_kaiten_boards(auth: KaitenAuth):
              raise HTTPException(status_code=400, detail=f"Failed to fetch boards: {resp.text}")
         
         return resp.json()
-@router.post("/google-maps/connect")
+@router.post("/google-maps/connect", summary="Connect Google Maps", description="Link your Google Maps account to sync location-based notes.")
 async def connect_google_maps(
     code: str,
     current_user: User = Depends(get_current_user)
@@ -415,7 +415,7 @@ async def google_maps_callback(
     from app.services.integrations.google_maps_service import google_maps_service
     status = await google_maps_service.connect(current_user.id, code)
     return {"status": status}
-@router.post("/yandex-maps/connect")
+@router.post("/yandex-maps/connect", summary="Connect Yandex Maps", description="Link your Yandex Maps account for location syncing.")
 async def connect_yandex_maps(
     code: str,
     current_user: User = Depends(get_current_user)
@@ -445,7 +445,7 @@ async def connect_apple_reminders(
     status = await tasks_service.connect_apple(current_user.id, code)
     return {"status": status}
 
-@router.post("/google-tasks/connect")
+@router.post("/google-tasks/connect", summary="Connect Google Tasks", description="Enable automatic task creation from notes in Google Tasks.")
 async def connect_google_tasks(
     code: str,
     current_user: User = Depends(get_current_user)
@@ -465,7 +465,7 @@ async def google_tasks_callback(
     status = await tasks_service.connect_google_tasks(current_user.id, code)
     return {"status": status}
 
-@router.post("/gmail/connect")
+@router.post("/gmail/connect", summary="Connect Gmail", description="Link your Gmail account to send note summaries via email.")
 async def connect_gmail(
     code: str,
     current_user: User = Depends(get_current_user)
@@ -485,7 +485,7 @@ async def gmail_callback(
     await email_service.connect_gmail(current_user.id, code)
     return {"status": "Connected"}
 
-@router.post("/outlook/connect")
+@router.post("/outlook/connect", summary="Connect Outlook", description="Link your Outlook account for email-based note sharing.")
 async def connect_outlook(
     code: str,
     current_user: User = Depends(get_current_user)
@@ -505,7 +505,7 @@ async def outlook_callback(
     await email_service.connect_outlook(current_user.id, code)
     return {"status": "Connected"}
 
-@router.post("/readwise/connect")
+@router.post("/readwise/connect", summary="Connect Readwise", description="Enable syncing of notes to your Readwise library.")
 async def connect_readwise(
     token: str,
     current_user: User = Depends(get_current_user)
@@ -515,7 +515,7 @@ async def connect_readwise(
     status = await readwise_service.connect(current_user.id, token)
     return {"status": status}
 
-@router.post("/obsidian/connect")
+@router.post("/obsidian/connect", summary="Connect Obsidian", description="Configure a local vault path for syncing notes with Obsidian or Logseq.")
 async def connect_obsidian(
     vault_path: str,
     current_user: User = Depends(get_current_user)
@@ -545,7 +545,7 @@ async def yandex_tasks_callback(
     await yandex_tasks_service.connect(current_user.id, code)
     return {"status": "Connected"}
 
-@router.post("/2gis/connect")
+@router.post("/2gis/connect", summary="Connect 2GIS", description="Link your 2GIS account for location-based note integration.")
 async def connect_2gis(
     token: str,
     current_user: User = Depends(get_current_user),
@@ -563,7 +563,7 @@ async def connect_2gis(
     await db.commit()
     return {"status": "Connected to 2GIS"}
 
-@router.post("/mapsme/connect")
+@router.post("/mapsme/connect", summary="Connect Maps.me", description="Link your Maps.me account by providing a KML vault path.")
 async def connect_mapsme(
     path: str,
     current_user: User = Depends(get_current_user),

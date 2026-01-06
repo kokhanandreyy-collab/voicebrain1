@@ -11,7 +11,7 @@ from app.api.dependencies import get_current_user
 from pydantic import BaseModel
 
 router = APIRouter(
-    tags=["users"]
+    tags=["Users"]
 )
 
 class UserStats(BaseModel):
@@ -25,7 +25,7 @@ class UserStats(BaseModel):
     productivity_trend: List[Dict] # [{date: '2023-10-01', count: 5}]
     integration_usage: List[Dict] # [{name: 'notion', value: 10}]
 
-@router.get("/stats", response_model=UserStats)
+@router.get("/stats", response_model=UserStats, summary="Get Personal Stats", description="Fetch aggregated productivity metrics, transcription usage, and subscription status for the current user.")
 async def get_user_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -86,8 +86,6 @@ async def get_user_stats(
     thirty_days_ago = now - timedelta(days=30)
     
     # Group by date
-    # SQLite/Postgres formatting differs. Using generic day truncation if possible or just processing in python for simplicity if volume is low.
-    # For now, let's just fetch recent notes and aggregate in Python to avoid DB dialect issues.
     recent_notes = await db.execute(
         select(Note.created_at)
         .where(Note.user_id == current_user.id)
@@ -108,24 +106,6 @@ async def get_user_stats(
     productivity_trend = [{"date": k, "count": v} for k, v in trend_map.items()]
     
     # 6. Integrations Usage
-    # Count logs by integration provider (join Integration table)
-    # Or just count distinct integration_ids from logs if we want simple checks
-    # Better: Join IntegrationLog -> Integration -> Provider
-    # But IntegrationLog might NOT link to Integration if integration deleted? 
-    # Let's count successfully synced notes per provider.
-    
-    # For simplicity, let's query IntegrationLogs for this user
-    # We need to join Integration to get the provider name
-    # IntegrationLog -> Integration -> User
-    
-    # Correct query:
-    # SELECT i.provider, COUNT(il.id) 
-    # FROM integration_logs il
-    # JOIN integrations i ON il.integration_id = i.id
-    # WHERE i.user_id = :uid AND il.status = 'SUCCESS'
-    # GROUP BY i.provider
-    
-    # Note: I need to import Integration model.
     from app.models import Integration
     
     logs_res = await db.execute(
@@ -138,9 +118,6 @@ async def get_user_stats(
     )
     
     usage_data = [{"name": r[0], "value": r[1]} for r in logs_res.all()]
-    
-    # If no usage, maybe show 0 for installed ones?
-    # Let's just return what we have.
     
     return UserStats(
         total_notes=total_notes,
@@ -158,7 +135,7 @@ class UpdateProfileRequest(BaseModel):
     bio: Optional[str] = None
     target_language: Optional[str] = None
 
-@router.put("/me")
+@router.put("/me", summary="Update Extended Profile", description="Update user-specific preferences like biography and target translation language.")
 async def update_user_profile(
     req: UpdateProfileRequest,
     db: AsyncSession = Depends(get_db),
@@ -177,7 +154,7 @@ async def update_user_profile(
         "target_language": current_user.target_language
     }
 
-@router.get("/me")
+@router.get("/me", summary="Get Profile Summary", description="Short summary of the current user's account status and tier.")
 async def get_current_user_profile(
     current_user: User = Depends(get_current_user)
 ):
@@ -190,7 +167,8 @@ async def get_current_user_profile(
         "tier": current_user.tier,
         "is_active": current_user.is_active
     }
-@router.post("/improve-memory")
+
+@router.post("/improve-memory", summary="Trigger Memory Self-Improvement", description="Manually start the AI background task to re-analyze and refine user long-term memory.")
 async def trigger_memory_improvement(
     current_user: User = Depends(get_current_user)
 ):

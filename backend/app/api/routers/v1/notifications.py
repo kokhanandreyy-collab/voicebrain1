@@ -6,13 +6,15 @@ from app.api.dependencies import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Notifications"]
+)
 
 class PushSubscription(BaseModel):
     endpoint: str
     keys: dict
 
-@router.post("/subscribe")
+@router.post("/subscribe", summary="Web Push Subscribe", description="Register a browser push notification subscription for the current user.")
 async def subscribe(
     subscription: PushSubscription,
     current_user: User = Depends(get_current_user),

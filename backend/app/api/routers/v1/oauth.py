@@ -12,7 +12,9 @@ from app.models import User
 from app.core.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 import uuid
 
-router = APIRouter()
+router = APIRouter(
+    tags=["OAuth"]
+)
 
 # Configuration mapping
 PROVIDERS = {
@@ -51,7 +53,7 @@ PROVIDERS = {
     }
 }
 
-@router.get("/{provider}/login")
+@router.get("/{provider}/login", summary="OAuth Provider Login", description="Redirects the user to the social provider's authorization page (Google, VK, Mail.ru, Twitter).")
 async def login_via_provider(provider: str):
     if provider not in PROVIDERS:
         raise HTTPException(status_code=404, detail="Provider not supported")
@@ -80,13 +82,15 @@ async def login_via_provider(provider: str):
     url = cfg["auth_url"] + "?" + urllib.parse.urlencode(params)
     return RedirectResponse(url)
 
-@router.get("/{provider}/callback")
+@router.get("/{provider}/callback", summary="OAuth Callback Handler", description="Handle the redirection back from the social provider, exchange code for user info, and establish session.")
 @limiter.limit("50/minute")
 async def auth_callback(request: Request, provider: str, code: str, db: AsyncSession = Depends(get_db)):
     if provider not in PROVIDERS:
         raise HTTPException(status_code=404, detail="Provider not found")
         
     cfg = PROVIDERS[provider]
+    # Use settings for base URL logic
+    REDIRECT_URI_BASE = f"{settings.API_BASE_URL}/api/v1/auth"
     redirect_uri = f"{REDIRECT_URI_BASE}/{provider}/callback"
     
     user_email = None
@@ -178,4 +182,4 @@ async def auth_callback(request: Request, provider: str, code: str, db: AsyncSes
     
     # Redirect back to frontend with token in URL param
     # In prod, better to use a secure cookie or an intermediate page
-    return RedirectResponse(f"http://localhost:5173/dashboard?token={my_access_token}")
+    return RedirectResponse(f"{settings.VITE_APP_URL}/dashboard?token={my_access_token}")

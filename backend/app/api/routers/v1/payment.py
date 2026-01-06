@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 router = APIRouter(
-    tags=["payment"]
+    tags=["Payments"]
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class InitPaymentRequest(BaseModel):
     promo_code: Optional[str] = None
     currency: Literal['RUB', 'USD'] = 'RUB' # Default to RUB for existing users
 
-@router.get("/config")
+@router.get("/config", summary="Get Payment Config", description="Retrieve available plans and pricing for different currencies (RUB/USD).")
 async def get_payment_config(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Plan).where(Plan.is_active == True))
     plans = result.scalars().all()
@@ -71,7 +71,7 @@ def verify_prodamus_signature(data: dict, received_sign: str) -> bool:
     
     return hmac.compare_digest(expected_sign.lower(), received_sign.lower())
 
-@router.post("/init")
+@router.post("/init", summary="Initialize Payment", description="Generate a payment link for a specific subscription tier and billing period using Prodamus.")
 async def init_payment(
     req: InitPaymentRequest,
     current_user: User = Depends(get_current_user),
@@ -158,7 +158,7 @@ async def init_payment(
         logger.error(f"Payment Link Gen Error: {e}")
         raise HTTPException(status_code=500, detail="Payment generation failed")
 
-@router.post("/webhook")
+@router.post("/webhook", summary="Payment Webhook", description="Asynchronous callback from Prodamus to confirm successful payment and upgrade user account.")
 async def payment_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db)
@@ -244,7 +244,7 @@ async def payment_webhook(
     return {"status": "user_not_found"}
 
 # Dev Helper: Simulate Webhook (only for local testing)
-@router.post("/dev/upgrade")
+@router.post("/dev/upgrade", summary="Dev Upgrade User Tier", description="Development-only endpoint to manually upgrade a user's tier for testing purposes.")
 async def dev_upgrade_user(
     email: str,
     tier: str,

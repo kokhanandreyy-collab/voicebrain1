@@ -6,7 +6,9 @@ from app.api.dependencies import get_current_user
 from infrastructure.config import settings
 from app.core.bot import bot
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Feedback"]
+)
 
 class FeedbackData(BaseModel):
     message: str
@@ -14,7 +16,7 @@ class FeedbackData(BaseModel):
     logs: Optional[str] = None
     url: Optional[str] = None
 
-@router.post("/")
+@router.post("/", summary="Submit Feedback", description="Send a bug report or feature request directly to the development team via Telegram.")
 async def submit_feedback(
     data: FeedbackData,
     current_user: User = Depends(get_current_user)

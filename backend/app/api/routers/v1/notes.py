@@ -15,13 +15,15 @@ from datetime import datetime, timezone, timedelta
 from fastapi_limiter.depends import RateLimiter
 from infrastructure.config import settings
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Notes"]
+)
 
 from infrastructure.storage import storage_client
 import uuid
 import json
 
-@router.post("/upload", response_model=NoteResponse)
+@router.post("/upload", response_model=NoteResponse, summary="Upload Voice Note", description="Upload an audio file for transcription and AI analysis. Supports multiple formats and enforces tier-based limits.")
 async def upload_note(
     request: Request,
     response: Response,
@@ -198,7 +200,7 @@ async def upload_note(
 
     return new_note
 
-@router.post("/create-text", response_model=NoteResponse)
+@router.post("/create-text", response_model=NoteResponse, summary="Create Text Note", description="Directly create a text-based note without audio. Useful for quick entries or bot integrations.")
 async def create_text_note(
     req: NoteCreate,
     current_user: User = Depends(get_current_user),
@@ -249,7 +251,7 @@ async def attach_integration_status(db: AsyncSession, notes: List[Note]):
     for note in notes:
         note.integration_status = status_map.get(note.id, [])
 
-@router.get("", response_model=List[NoteResponse])
+@router.get("", response_model=List[NoteResponse], summary="List Notes", description="Retrieve all notes for the current user. Supports semantic search via the 'q' parameter.")
 async def get_notes(
     skip: int = 0, 
     limit: int = 100, 
@@ -270,7 +272,7 @@ async def get_notes(
     await attach_integration_status(db, notes)
     return notes
 
-@router.post("/ask", response_model=AskResponse, dependencies=[Depends(RateLimiter(times=20, seconds=3600))])
+@router.post("/ask", response_model=AskResponse, dependencies=[Depends(RateLimiter(times=20, seconds=3600))], summary="Ask AI", description="Ask a question about your notes. Uses RAG to find relevant context and provide a personalized answer.")
 async def ask_ai(
     req: AskRequest,
     current_user: User = Depends(get_current_user),
@@ -346,7 +348,7 @@ async def ask_ai(
 
 from fastapi.responses import StreamingResponse
 
-@router.post("/ask/stream", dependencies=[Depends(RateLimiter(times=50, seconds=3600))])
+@router.post("/ask/stream", dependencies=[Depends(RateLimiter(times=50, seconds=3600))], summary="Ask AI (Streaming)", description="Similar to /ask, but streams the response tokens back to the client for a better UX.")
 async def ask_ai_stream(
     req: AskRequest,
     current_user: User = Depends(get_current_user),
@@ -380,7 +382,7 @@ async def ask_ai_stream(
     
 
 
-@router.post("/search/voice", response_model=List[NoteResponse], dependencies=[Depends(RateLimiter(times=30, seconds=60))])
+@router.post("/search/voice", response_model=List[NoteResponse], dependencies=[Depends(RateLimiter(times=30, seconds=60))], summary="Voice Search", description="Voice-activated search. Transcribes your audio query and finds relevant notes using semantic matching.")
 async def search_voice(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -404,7 +406,7 @@ async def search_voice(
     )
     return result.scalars().all()
 
-@router.post("/transcribe", dependencies=[Depends(RateLimiter(times=30, seconds=60))])
+@router.post("/transcribe", dependencies=[Depends(RateLimiter(times=30, seconds=60))], summary="Transcribe Audio Only", description="Utility endpoint for transcribing audio without saving it as a note. Ideal for voice-to-text inputs.")
 async def transcribe_audio_only(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
@@ -417,7 +419,7 @@ async def transcribe_audio_only(
     transcription = await ai_service.transcribe_audio(content)
     return {"text": transcription["text"]}
 
-@router.get("/{note_id}", response_model=NoteResponse)
+@router.get("/{note_id}", response_model=NoteResponse, summary="Get Note Detail", description="Fetch the full details of a specific note, including its analysis results and synchronization status.")
 async def get_note_detail(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -430,7 +432,7 @@ async def get_note_detail(
     await attach_integration_status(db, [note])
     return note
 
-@router.get("/{note_id}/related", response_model=List[RelatedNote])
+@router.get("/{note_id}/related", response_model=List[RelatedNote], summary="Get Related Notes", description="Find notes semantically related to the specified note. Uses vector distance calculation.")
 async def get_related_notes(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -474,7 +476,7 @@ async def get_related_notes(
              
     return related
 
-@router.delete("/{note_id}", status_code=204)
+@router.delete("/{note_id}", status_code=204, summary="Delete Note", description="Hard delete a note and its associated audio file from storage.")
 async def delete_note(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -499,7 +501,7 @@ async def delete_note(
 class BatchDeleteRequest(BaseModel):
     note_ids: List[str]
 
-@router.post("/batch/delete", status_code=204)
+@router.post("/batch/delete", status_code=204, summary="Batch Delete Notes", description="Efficiently delete multiple notes and their storage binaries in a single request.")
 async def delete_notes_batch(
     req: BatchDeleteRequest,
     current_user: User = Depends(get_current_user),
@@ -524,7 +526,7 @@ async def delete_notes_batch(
     await db.commit()
     return None
 
-@router.put("/{note_id}", response_model=NoteResponse)
+@router.put("/{note_id}", response_model=NoteResponse, summary="Update Note", description="Modify note metadata (title, summary, tags). Automatically regenerates semantic embeddings if content changes.")
 async def update_note(
     note_id: str,
     note_update: NoteUpdate,
@@ -563,7 +565,7 @@ async def update_note(
     await db.refresh(note)
     return note
 
-@router.post("/{note_id}/extract-health")
+@router.post("/{note_id}/extract-health", summary="Extract Health Metrics", description="AI-driven extraction of health and biometric data from the note text. Saves results to health_data JSON.")
 async def extract_health(
     note_id: str,
     current_user: User = Depends(get_current_user),
@@ -591,7 +593,7 @@ async def extract_health(
         
     return metrics
 
-@router.post("/{note_id}/share/{provider}")
+@router.post("/{note_id}/share/{provider}", summary="Share to Integration", description="Manually trigger a synchronization of the note to an external service (Notion, Slack, etc.).")
 async def share_note(
     note_id: str,
     provider: str,
@@ -634,7 +636,7 @@ async def share_note(
 
 from app.schemas import NoteEditRequest
 
-@router.post("/{note_id}/edit", response_model=NoteResponse)
+@router.post("/{note_id}/edit", response_model=NoteResponse, summary="Manual Content Edit", description="Legacy edit endpoint for direct content modification. Also triggers embedding update.")
 async def edit_note(
     note_id: str,
     req: NoteEditRequest,
@@ -667,7 +669,7 @@ async def edit_note(
     await db.refresh(note)
     return note
 
-@router.post("/{note_id}/reply", response_model=NoteResponse)
+@router.post("/{note_id}/reply", response_model=NoteResponse, summary="Reply to AI Clarification", description="Submit a response to an AI-generated clarification question. Creates a follow-up note for analysis.")
 async def reply_to_clarification(
     note_id: str,
     req: ReplyRequest,

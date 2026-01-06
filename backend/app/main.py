@@ -72,8 +72,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"code": "internal_error", "message": "An unexpected error occurred. Please try again later."},
     )
 
-# ...
-
 @app.on_event("startup")
 async def startup():
     # 1. Logging
@@ -107,10 +105,8 @@ async def startup():
     except Exception as e:
         print(f"Warning: Redis not available for Rate Limiter: {e}")
 
-    # Rate Limiter is now handled by slowapi via middleware/limiter.py
+    # Rate Limiter is handled by slowapi via middleware/limiter.py
     print("Rate Limiter (slowapi) active")
-         
-    # Telegram Bot is now run separately via run_bot.py
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -127,18 +123,20 @@ from app.api.routers.v1 import (
 api_v1_router = APIRouter()
 
 # Group all routers under the v1 API router
-api_v1_router.include_router(auth.router, prefix="/auth", tags=["auth"])
-api_v1_router.include_router(oauth.router, prefix="/auth", tags=["oauth"])
-api_v1_router.include_router(notes.router, prefix="/notes", tags=["notes"])
-api_v1_router.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
-api_v1_router.include_router(exports.router, prefix="/export", tags=["export"])
-api_v1_router.include_router(payment.router, prefix="/payment", tags=["payment"])
-api_v1_router.include_router(tags.router, prefix="/tags", tags=["tags"])
-api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-api_v1_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
-api_v1_router.include_router(admin.router, prefix="/admin", tags=["admin"])
-api_v1_router.include_router(users.router, prefix="/users", tags=["users"])
-api_v1_router.include_router(settings.router, prefix="/user/settings", tags=["settings"])
+# We remove 'tags' here to avoid overriding/merging with the specialized tags 
+# defined within each router file (e.g. tags=["Authentication"]).
+api_v1_router.include_router(auth.router, prefix="/auth")
+api_v1_router.include_router(oauth.router, prefix="/auth")
+api_v1_router.include_router(notes.router, prefix="/notes")
+api_v1_router.include_router(integrations.router, prefix="/integrations")
+api_v1_router.include_router(exports.router, prefix="/export")
+api_v1_router.include_router(payment.router, prefix="/payment")
+api_v1_router.include_router(tags.router, prefix="/tags")
+api_v1_router.include_router(notifications.router, prefix="/notifications")
+api_v1_router.include_router(feedback.router, prefix="/feedback")
+api_v1_router.include_router(admin.router, prefix="/admin")
+api_v1_router.include_router(users.router, prefix="/users")
+api_v1_router.include_router(settings.router, prefix="/user/settings")
 
 # Include v1 router with global prefix
 app.include_router(api_v1_router, prefix="/api/v1")
@@ -156,5 +154,3 @@ async def root():
 @limiter.exempt
 async def health():
     return {"status": "ok"}
-
-

@@ -7,9 +7,11 @@ from app.models import User, Note
 from app.schemas import TagUsage, TagMergeRequest
 from app.api.dependencies import get_current_user
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Tags"]
+)
 
-@router.get("", response_model=List[TagUsage])
+@router.get("", response_model=List[TagUsage], summary="List All Tags", description="Retrieve all unique tags used by the user across their notes, along with usage counts.")
 async def get_tags(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -25,7 +27,7 @@ async def get_tags(
     result = await db.execute(sql, {"user_id": current_user.id})
     return [{"name": row[0], "count": row[1]} for row in result.all()]
 
-@router.put("/merge")
+@router.put("/merge", summary="Merge Tags", description="Rename one tag to another across all notes, effectively merging them. Cleans up duplicates.")
 async def merge_tags(
     req: TagMergeRequest,
     current_user: User = Depends(get_current_user),
@@ -51,7 +53,7 @@ async def merge_tags(
     await db.commit()
     return {"status": "success"}
 
-@router.delete("/{name}")
+@router.delete("/{name}", summary="Delete Tag", description="Remove a specific tag from all notes where it is applied.")
 async def delete_tag(
     name: str,
     current_user: User = Depends(get_current_user),

@@ -12,7 +12,7 @@ from app.core.security import create_access_token
 from pydantic import BaseModel
 
 router = APIRouter(
-    tags=["admin"]
+    tags=["Admin"]
 )
 
 # --- Dependency ---
@@ -46,7 +46,7 @@ class AdminCharts(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/users")
+@router.get("/users", summary="List All Users", description="Paginated list of users with search and sorting capabilities for administrative oversight.")
 async def list_users(
     page: int = 1,
     limit: int = 20,
@@ -73,7 +73,7 @@ async def list_users(
     # Just return raw users for now, can use Pydantic schema later
     return users
 
-@router.get("/stats", response_model=AdminStats)
+@router.get("/stats", response_model=AdminStats, summary="Global System Stats", description="High-level business metrics including total users, MRR estimation, and system usage.")
 async def get_stats(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_admin_user)
@@ -109,7 +109,7 @@ async def get_stats(
         "total_notes_processed": total_notes
     }
 
-@router.get("/charts", response_model=AdminCharts)
+@router.get("/charts", response_model=AdminCharts, summary="Analytics Charts", description="Time-series data for user growth and integration distribution.")
 async def get_admin_charts(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_admin_user)
@@ -161,7 +161,7 @@ async def get_admin_charts(
         "integrations": integration_data
     }
 
-@router.get("/plans")
+@router.get("/plans", summary="List Subscription Plans", description="Retrieve all existing subscription plans and their price/feature configurations.")
 async def get_plans(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_admin_user)
@@ -169,7 +169,7 @@ async def get_plans(
     result = await db.execute(select(Plan))
     return result.scalars().all()
 
-@router.put("/plans/{plan_id}")
+@router.put("/plans/{plan_id}", summary="Update Plan Details", description="Modify features or pricing for a specific subscription plan. Logs the action for auditing.")
 async def update_plan(
     plan_id: str,
     updates: PlanUpdate,
@@ -208,7 +208,7 @@ async def update_plan(
     await db.refresh(plan)
     return plan
 
-@router.post("/impersonate/{user_id}")
+@router.post("/impersonate/{user_id}", summary="Impersonate User", description="Generate a temporary JWT to access the system as a specific user. Intended for support and debugging.")
 async def impersonate_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -249,7 +249,7 @@ class GrantSubscription(BaseModel):
     tier: str # 'pro', 'premium' (or 'free' to revoke)
     duration_days: Optional[int] = None # None = lifetime or until cancelled manually
 
-@router.get("/promocodes")
+@router.get("/promocodes", summary="List Promo Codes", description="Retrieve all generated promo codes.")
 async def get_promocodes(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_admin_user)
@@ -257,7 +257,7 @@ async def get_promocodes(
     result = await db.execute(select(PromoCode).order_by(desc(PromoCode.created_at)))
     return result.scalars().all()
 
-@router.post("/promocodes")
+@router.post("/promocodes", summary="Create Promo Code", description="Generate a new discount code with usage limits.")
 async def create_promocode(
     promo: CreatePromoCode,
     db: AsyncSession = Depends(get_db),
@@ -281,7 +281,7 @@ async def create_promocode(
     await db.commit()
     return new_code
 
-@router.delete("/promocodes/{id}")
+@router.delete("/promocodes/{id}", summary="Delete Promo Code", description="Revoke and delete an active promo code.")
 async def delete_promocode(
     id: str,
     db: AsyncSession = Depends(get_db),
@@ -298,7 +298,7 @@ async def delete_promocode(
         await db.commit()
     return {"status": "deleted"}
 
-@router.post("/users/{user_id}/grant_subscription")
+@router.post("/users/{user_id}/grant_subscription", summary="Grant Sub Manually", description="Forcefully update a user's subscription tier for a specified duration.")
 async def grant_subscription(
     user_id: str,
     grant: GrantSubscription,
@@ -333,7 +333,7 @@ async def grant_subscription(
     await db.commit()
     return {"status": "granted", "tier": user.tier}
 
-@router.post("/users/{user_id}/ban")
+@router.post("/users/{user_id}/ban", summary="Ban User", description="Deactivate a user account, preventing future login and API access.")
 async def ban_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -358,7 +358,7 @@ async def ban_user(
 class UpdateSystemPrompt(BaseModel):
     text: str
 
-@router.get("/prompts")
+@router.get("/prompts", summary="List System Prompts", description="Fetch all AI system prompts used for analysis, transcription, and interactive features.")
 async def list_sys_prompts(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_admin_user)
@@ -367,7 +367,7 @@ async def list_sys_prompts(
     result = await db.execute(select(SystemPrompt).order_by(SystemPrompt.key))
     return result.scalars().all()
 
-@router.put("/prompts/{key}")
+@router.put("/prompts/{key}", summary="Update System Prompt", description="Modify the text of a system prompt. Automatically clears cached prompts in Redis.")
 async def update_sys_prompt(
     key: str,
     update: UpdateSystemPrompt,

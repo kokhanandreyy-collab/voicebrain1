@@ -11,7 +11,9 @@ from app.core.security import get_password_hash, verify_password, create_access_
 from datetime import timedelta
 import uuid
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Authentication"]
+)
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -20,8 +22,7 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
-@router.post("/signup")
-@limiter.limit("5/5 minute")
+@router.post("/signup", summary="User Signup", description="Register a new user account. Triggers a verification email.")
 async def signup(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == user.email))
     if result.scalars().first():
@@ -56,7 +57,7 @@ async def signup(request: Request, user: UserCreate, db: AsyncSession = Depends(
     
     return {"message": "Registration successful. Please check your email to verify your account."}
 
-@router.get("/verify")
+@router.get("/verify", summary="Verify Email", description="Confirm email address using a token sent during signup.")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.verification_token == token))
     user = result.scalars().first()
@@ -73,7 +74,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     
     return {"message": "Email verified successfully"}
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", summary="Forgot Password", description="Request a password reset link to be sent via email.")
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalars().first()
@@ -100,7 +101,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
     
     return {"message": "If this email is registered, you will receive a password reset link."}
 
-@router.post("/reset-password")
+@router.post("/reset-password", summary="Reset Password", description="Reset password using a token from the forgot-password email.")
 async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.reset_token == request.token))
     user = result.scalars().first()
@@ -114,8 +115,7 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
     
     return {"message": "Password reset successfully"}
 
-@router.post("/login", response_model=Token)
-@limiter.limit("5/5 minute")
+@router.post("/login", response_model=Token, summary="User Login", description="Authenticate with email and password to receive a JWT access token.")
 async def login(request: Request, user: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == user.email))
     db_user = result.scalars().first()
@@ -132,11 +132,11 @@ async def login(request: Request, user: UserLogin, db: AsyncSession = Depends(ge
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, summary="Get Current User", description="Fetch the profile of the currently authenticated user.")
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.patch("/me", response_model=UserResponse)
+@router.patch("/me", response_model=UserResponse, summary="Update Current User", description="Partially update the current user's profile metadata.")
 async def update_me(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user),
@@ -156,7 +156,7 @@ async def update_me(
     await db.refresh(current_user)
     return current_user
 
-@router.delete("/me", status_code=204)
+@router.delete("/me", status_code=204, summary="Delete Account", description="Permanently delete the current user's account and all associated data.")
 async def delete_account(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

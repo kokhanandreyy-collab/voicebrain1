@@ -3,10 +3,13 @@ from loguru import logger
 from sqlalchemy.future import select
 from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
+import math
+import datetime
 
 from app.services.ai_service import ai_service
 from app.models import Note, NoteEmbedding, LongTermMemory
 from infrastructure.redis_client import short_term_memory
+from infrastructure.config import settings
 
 class RagService:
     async def embed_note(self, note: Note, db: AsyncSession) -> None:
@@ -92,28 +95,44 @@ class RagService:
             return {"vector": "", "graph": ""}
 
     async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
-        """Fetch top long-term memories. Prioritize high importance, then relevance + date."""
+        """Fetch top long-term memories. Prioritize high importance, recent, and relevant."""
         try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            decay_const = getattr(settings, "RAG_TEMPORAL_DECAY_DAYS", 30)
+            
+            # Helper to calculate temporal score
+            def calculate_temporal_score(mem):
+                created_at = mem.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+                
+                days_since = (now - created_at).total_seconds() / 86400.0
+                freshness = math.exp(-max(0, days_since) / decay_const)
+                importance = getattr(mem, 'importance_score', 5.0) or 5.0
+                return importance * freshness
+
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
-                 # Hybrid: Get 50 most similar (broad search)
-                     select(LongTermMemory)
-                     .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
-                     .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
-                     .limit(50)
+                 # Hybrid search: broad vector match -> strict temporal re-rank
+                 result = await db.execute(
+                      select(LongTermMemory)
+                      .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
+                      .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
+                      .limit(50)
                  )
-                 candidates = result.scalars().all()
-                 # Strict Re-ranking: Priority = Score (desc) -> Date (desc)
-                 candidates.sort(key=lambda x: (getattr(x, 'importance_score', 0), x.created_at), reverse=True)
+                 candidates = list(result.scalars().all())
+                 candidates.sort(key=calculate_temporal_score, reverse=True)
                  final = candidates[:5]
             else:
+                  # General summary retrieval
                   result = await db.execute(
                       select(LongTermMemory)
                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
-                      .order_by(LongTermMemory.importance_score.desc(), LongTermMemory.created_at.desc())
-                      .limit(5)
+                      .limit(100) 
                   )
-                  final = result.scalars().all()
+                  candidates = list(result.scalars().all())
+                  candidates.sort(key=calculate_temporal_score, reverse=True)
+                  final = candidates[:5]
 
             parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]
             return "\n".join(parts) if parts else "No long-term knowledge recorded yet."
@@ -121,8 +140,6 @@ class RagService:
             logger.error(f"Long-Term retrieval failed: {e}")
             return ""
 
-    async def build_hierarchical_context(self, note: Note, db: AsyncSession) -> str:
-        """Aggregates Short, Medium, and Long term memory contexts."""
     async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any = None) -> str:
         """Aggregates Short, Medium, and Long term memory contexts."""
         # 1. Short Term (Last 10 Notes)

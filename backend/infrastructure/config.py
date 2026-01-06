@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Limits
     MAX_UPLOAD_SIZE_MB: int = 50
     RATE_LIMIT_GLOBAL: str = "100/minute"
+    
+    # RAG
+    RAG_TEMPORAL_DECAY_DAYS: int = 30
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod

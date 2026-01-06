@@ -133,7 +133,7 @@ class AnalyzeCore:
         if user and user.adaptive_preferences:
             import json
             prefs_str = json.dumps(user.adaptive_preferences, indent=2)
-            user_bio += f"\n\nAdaptive Preferences (Learned): {prefs_str}"
+            user_bio += f"\n\nAdaptive preferences: {prefs_str}"
 
         # Adaptive Learning Instruction
         user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."

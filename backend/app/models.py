@@ -303,3 +303,15 @@ class LongTermMemory(Base):
     embedding = Column(VECTOR(1536))
 
     user = relationship("User")
+
+class CachedAnalysis(Base):
+    __tablename__ = "cached_analysis"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"))
+    
+    from pgvector.sqlalchemy import VECTOR
+    embedding = Column(VECTOR(1536))
+    result = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True))

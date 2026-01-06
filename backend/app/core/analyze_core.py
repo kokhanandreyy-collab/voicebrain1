@@ -144,13 +144,70 @@ class AnalyzeCore:
         # Log Context Size for Monitoring
         logger.info(f"RAG Context Tokens (Est): {int(len(hierarchical_context)/4)} chars: {len(hierarchical_context)}")
         
-        # 2. AI Analysis
-        analysis = await ai_service.analyze_text(
-            note.transcription_text,
-            user_context=user_bio,
-            target_language=target_lang,
-            previous_context=hierarchical_context
-        )
+        # 1.5 Semantic Cache Check (Task 3)
+        from app.models import CachedAnalysis
+        import datetime
+        
+        cache_hit = False
+        cached_result = None
+        current_embedding = None
+        
+        try:
+            # Generate embedding for cache key
+            current_embedding = await ai_service.generate_embedding(note.transcription_text)
+            
+            # Search cache
+            # Cosine similarity > 0.9 approximately equals cosine distance < 0.1
+            cache_res = await db.execute(
+                select(CachedAnalysis)
+                .where(
+                    CachedAnalysis.user_id == note.user_id,
+                    CachedAnalysis.embedding.cosine_distance(current_embedding) < 0.1,
+                    CachedAnalysis.expires_at > datetime.datetime.now(datetime.timezone.utc)
+                )
+                .order_by(CachedAnalysis.embedding.cosine_distance(current_embedding))
+                .limit(1)
+            )
+            cached_entry = cache_res.scalars().first()
+            
+            if cached_entry:
+                logger.info(f"[Cache] Hit for note {note.id}")
+                cached_result = cached_entry.result
+                cache_hit = True
+            else:
+                logger.info(f"[Cache] Miss for note {note.id}")
+                
+        except Exception as e:
+            logger.warning(f"[Cache] Lookup failed: {e}")
+
+        if cache_hit and cached_result:
+            # Skip AI call
+            analysis = cached_result
+        else:
+            # 2. AI Analysis
+            analysis = await ai_service.analyze_text(
+                note.transcription_text,
+                user_context=user_bio,
+                target_language=target_lang,
+                previous_context=hierarchical_context
+            )
+            
+            # Save to Cache
+            try:
+                if current_embedding:
+                    ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
+                    new_cache = CachedAnalysis(
+                        user_id=note.user_id,
+                        embedding=current_embedding,
+                        result=analysis,
+                        expires_at=ttl
+                    )
+                    db.add(new_cache)
+                    # We don't commit here immediately, usually the caller commits or we rely on session lifecycle.
+                    # But analyze_step usually doesn't commit? Wait, pipeline commits.
+                    # So adding to session is enough.
+            except Exception as e:
+                logger.warning(f"[Cache] Save failed: {e}")
         
         # 3. Apply results
         self._apply_analysis_to_note(note, analysis)

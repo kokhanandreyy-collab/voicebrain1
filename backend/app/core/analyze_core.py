@@ -111,13 +111,31 @@ rag_service = RagService()
 class AnalyzeCore:
     """
     Core Intelligence Engine for VoiceBrain.
-
-    Responsibilities:
-    1. Context Assembly: Combines User Identity, Adaptive Preferences, and RAG context.
-    2. AI Processing: Calls LLM to extract intent, summary, and action items.
-    3. Adaptive Learning: Updates user identity and preferences based on analysis results.
-    4. Feedback Loop: Identifies ambiguity to ask clarifying questions.
     """
+    async def analyze_note_by_id(self, note_id: str, db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
+        """
+        Complete analysis orchestration from a note ID.
+        Fetches note/user, checks cache, runs AI, and updates state.
+        Used primarily by background workers and pipeline.
+        """
+        # 1. Fetch State
+        res_note = await db.execute(select(Note).where(Note.id == note_id))
+        note = res_note.scalars().first()
+        if not note or not note.transcription_text:
+            return {}
+
+        res_user = await db.execute(select(User).where(User.id == note.user_id))
+        user = res_user.scalars().first()
+
+        # 2. Execute Analysis Logic
+        analysis, _ = await self.analyze_step(note, user, db, memory_service)
+        
+        # 3. Finalize
+        note.status = "analyzed"
+        await db.commit()
+        
+        return analysis
+
     async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> tuple[Dict[str, Any], bool]:
         """
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save

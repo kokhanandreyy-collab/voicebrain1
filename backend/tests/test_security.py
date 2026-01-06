@@ -39,7 +39,7 @@ def test_rate_limit_trigger(mock_limit):
     """Test that rate limiter is called for protected routes."""
     # We mock the limit decorator to verify it's applied
     # Note: testing actual 422 requires a real Redis or complex mocking of slowapi storage
-    from app.api.routers.notes import router as notes_router
+    from app.api.routers.v1.notes import router as notes_router
     
     # Check if the rate limit decorator is present on some endpoint
     # slowapi attaches metadata to the function

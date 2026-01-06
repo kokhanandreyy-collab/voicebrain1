@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from app.api.routers.users import UserStats
+from app.api.routers.v1.users import UserStats
 
 @pytest.mark.asyncio
 async def test_get_current_user_profile(client, test_user):

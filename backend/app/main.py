@@ -117,28 +117,35 @@ async def shutdown():
     await http_client.stop()
 
 # --- Router Configuration ---
-# --- Router Configuration ---
-from fastapi import Depends
-from app.api.routers import notes, integrations, exports, payment, oauth, auth, tags, notifications, feedback, admin, users, settings
+from app.api.routers.v1 import (
+    notes, integrations, exports, payment, 
+    oauth, auth, tags, notifications, 
+    feedback, admin, users, settings
+)
 
-api_router = APIRouter()
+# API v1 Router Group
+api_v1_router = APIRouter()
 
-# Group all routers under the API router
-api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
-api_router.include_router(oauth.router, prefix="/auth", tags=["oauth"])
-api_router.include_router(notes.router, prefix="/notes", tags=["notes"])
-api_router.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
-api_router.include_router(exports.router, prefix="/export", tags=["export"])
-api_router.include_router(payment.router, prefix="/payment", tags=["payment"])
-api_router.include_router(tags.router, prefix="/tags", tags=["tags"])
-api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
-api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
-api_router.include_router(users.router, prefix="/users", tags=["users"])
-api_router.include_router(settings.router, prefix="/user/settings", tags=["settings"])
+# Group all routers under the v1 API router
+api_v1_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_v1_router.include_router(oauth.router, prefix="/auth", tags=["oauth"])
+api_v1_router.include_router(notes.router, prefix="/notes", tags=["notes"])
+api_v1_router.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
+api_v1_router.include_router(exports.router, prefix="/export", tags=["export"])
+api_v1_router.include_router(payment.router, prefix="/payment", tags=["payment"])
+api_v1_router.include_router(tags.router, prefix="/tags", tags=["tags"])
+api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_v1_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+api_v1_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_v1_router.include_router(users.router, prefix="/users", tags=["users"])
+api_v1_router.include_router(settings.router, prefix="/user/settings", tags=["settings"])
 
-# Include the API router into the main app with version prefix
-app.include_router(api_router, prefix="/api/v1")
+# Include v1 router with global prefix
+app.include_router(api_v1_router, prefix="/api/v1")
+
+# NOTE: Future v2 routers should be included here when ready:
+# from app.api.routers.v2 import ...
+# app.include_router(api_v2_router, prefix="/api/v2")
 
 @app.get("/")
 @limiter.exempt

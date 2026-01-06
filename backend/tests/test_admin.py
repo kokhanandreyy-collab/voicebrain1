@@ -107,7 +107,7 @@ async def test_impersonate_user(client, db_session, admin_user):
     mock_res.scalars.return_value.first.return_value = target_user
     db_session.execute.return_value = mock_res
     
-    with patch("app.api.routers.admin.create_access_token", return_value="fake_token"):
+    with patch("app.api.routers.v1.admin.create_access_token", return_value="fake_token"):
         response = await client.post("/admin/impersonate/u-target")
         assert response.status_code == 200
         assert response.json()["access_token"] == "fake_token"

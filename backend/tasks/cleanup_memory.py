@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from celery import shared_task
-from sqlalchemy import delete
-from app.models import Note, LongTermMemory
+from app.models import Note, LongTermMemory, NoteRelation
 from infrastructure.database import AsyncSessionLocal as async_session
+from infrastructure.metrics import MEMORY_GRAPH_NODES, MEMORY_GRAPH_EDGES
+from sqlalchemy import delete, select, func
 from loguru import logger
 import asyncio
 
@@ -32,6 +33,13 @@ async def run_cleanup_async():
 
             await session.commit()
             logger.info(f"Cleanup completed: deleted {deleted_notes.rowcount} notes and {deleted_longterm.rowcount} longterm memories")
+            
+            # Monitoring: Graph Size (Requirement 1/3)
+            nodes = (await session.execute(select(func.count(Note.id)))).scalar() or 0
+            edges = (await session.execute(select(func.count(NoteRelation.id)))).scalar() or 0
+            logger.info(f"Graph size: {nodes} nodes, {edges} edges")
+            MEMORY_GRAPH_NODES.set(nodes)
+            MEMORY_GRAPH_EDGES.set(edges)
         except Exception as e:
             logger.error(f"Cleanup task failed: {e}")
             await session.rollback()

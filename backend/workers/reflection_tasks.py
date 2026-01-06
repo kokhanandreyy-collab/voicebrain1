@@ -8,11 +8,23 @@ import datetime
 from infrastructure.database import AsyncSessionLocal
 from app.models import User, Note, LongTermMemory
 from app.services.ai_service import ai_service
-from infrastructure.metrics import track_cache_hit, track_cache_miss
+from infrastructure.metrics import track_cache_hit, track_cache_miss, MEMORY_GRAPH_NODES, MEMORY_GRAPH_EDGES
+from sqlalchemy import func
 
 async def _process_reflection_async(user_id: str, limit: int = 50):
     logger.info(f"Starting reflection for user {user_id}")
     async with AsyncSessionLocal() as db:
+        # Monitoring: Graph Size (Requirement 1/3)
+        try:
+            from app.models import NoteRelation
+            nodes_count = (await db.execute(select(func.count(Note.id)))).scalar() or 0
+            edges_count = (await db.execute(select(func.count(NoteRelation.id)))).scalar() or 0
+            logger.info(f"Memory Graph stats: {nodes_count} nodes, {edges_count} edges")
+            MEMORY_GRAPH_NODES.set(nodes_count)
+            MEMORY_GRAPH_EDGES.set(edges_count)
+        except Exception as mon_err:
+            logger.warning(f"Failed to fetch graph size: {mon_err}")
+
         # 1. Fetch last notes (dynamic limit)
         result = await db.execute(
             select(Note)

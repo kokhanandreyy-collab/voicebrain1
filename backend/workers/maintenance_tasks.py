@@ -221,6 +221,8 @@ def report_cache_stats_task():
     async_to_sync(_report_cache_stats_async)()
 
 async def _report_cache_stats_async() -> None:
-    from infrastructure.metrics import get_cache_hit_rate
-    hit_rate = get_cache_hit_rate()
-    logger.info(f"Daily Cache Performance Report: Semantic Search Hit Rate is {hit_rate}%")
+    from infrastructure.metrics import get_cache_hit_rate, get_reflection_hit_rate
+    global_rate = get_cache_hit_rate()
+    reflection_rate = get_reflection_hit_rate()
+    logger.info(f"Daily Cache Performance Report: Global Semantic Hit Rate is {global_rate}%")
+    logger.info(f"Daily Cache Performance Report: Reflection Hit Rate is {reflection_rate}%")

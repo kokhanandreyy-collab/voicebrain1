@@ -10,15 +10,15 @@ from app.models import User, Note, LongTermMemory
 from app.services.ai_service import ai_service
 from infrastructure.metrics import track_cache_hit, track_cache_miss
 
-async def _process_reflection_async(user_id: str):
+async def _process_reflection_async(user_id: str, limit: int = 50):
     logger.info(f"Starting reflection for user {user_id}")
     async with AsyncSessionLocal() as db:
-        # 1. Fetch last 50 notes
+        # 1. Fetch last notes (dynamic limit)
         result = await db.execute(
             select(Note)
             .where(Note.user_id == user_id, Note.transcription_text.isnot(None))
             .order_by(desc(Note.created_at))
-            .limit(50)
+            .limit(limit)
         )
         notes = result.scalars().all()
         
@@ -29,7 +29,7 @@ async def _process_reflection_async(user_id: str):
         # 2. Build Cache Key / Context
         notes_text = "\n\n".join([f"Date: {n.created_at}\nText: {n.transcription_text[:1000]}" for n in notes])
         
-        # 2.5 Semantic Cache Check (Task 1)
+        # 2.5 Semantic Cache Check
         from app.models import CachedAnalysis
         import datetime
         import json
@@ -91,7 +91,7 @@ async def _process_reflection_async(user_id: str):
                      logger.error(f"Reflection JSON Decode Error: {response_text}")
                      return
                  
-                 # Save to Cache (Task 2: 7 day TTL)
+                 # Save to Cache
                  try:
                     if context_embedding:
                         ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
@@ -130,9 +130,8 @@ async def _process_reflection_async(user_id: str):
                  if user_obj:
                      user_obj.identity_summary = identity
              
-             # 6. Graph Relations (New)
+             # 6. Graph Relations
              try:
-                 # Specific strict prompt as requested
                  rel_prompt = (
                      "Генерируй связи строго в JSON list: "
                      "[{'note1_id': str, 'note2_id': str, 'type': 'caused|related|updated|contradicted', 'strength': float 0.5–1.0}]. "
@@ -161,7 +160,7 @@ async def _process_reflection_async(user_id: str):
                  relations = raw_data if isinstance(raw_data, list) else raw_data.get("relations", [])
                  logger.info(f"Graph extraction: generated {len(relations)} connections")
                  
-                from app.models import NoteRelation
+                 from app.models import NoteRelation
                  new_relations_buffer = []
                  for r in relations:
                      n1 = r.get('note1_id') or r.get('id1')
@@ -181,7 +180,6 @@ async def _process_reflection_async(user_id: str):
                          ))
                  
                  if new_relations_buffer:
-                     # Task 2: Batch Insert Optimization
                      db.add_all(new_relations_buffer)
                      logger.debug(f"Saved {len(new_relations_buffer)} new note relations to DB (Batch).")
                          
@@ -189,14 +187,32 @@ async def _process_reflection_async(user_id: str):
                  logger.error(f"Graph extraction failed: {rel_err}")
 
              await db.commit()
-             logger.info(f"Reflection saved for user {user_id} (Score: {score})")
+             logger.info(f"Reflection completed for user {user_id}")
              
         except Exception as e:
             logger.error(f"Reflection failed: {e}")
 
 @shared_task(name="reflection.daily_task")
 def reflection_daily(user_id: str):
-    async_to_sync(_process_reflection_async)(user_id)
+    async_to_sync(_process_reflection_async)(user_id, limit=50)
+
+@shared_task(name="reflection.incremental_task")
+def reflection_incremental(user_id: str):
+    """Triggered after note analysis, limited to last 10 notes."""
+    # Check cooldown in Redis (Task 3: 5 minutes)
+    import redis
+    from infrastructure.config import settings
+    r = redis.from_url(settings.REDIS_URL)
+    lock_key = f"reflection_lock:{user_id}"
+    
+    if r.get(lock_key):
+        logger.debug(f"Reflection skipped for {user_id} (cooldown)")
+        return
+    
+    # Set 5 min lock
+    r.setex(lock_key, 300, "1")
+    
+    async_to_sync(_process_reflection_async)(user_id, limit=11) # Current + 10 last
 
 @shared_task(name="reflection.trigger_daily")
 def trigger_daily_reflection():

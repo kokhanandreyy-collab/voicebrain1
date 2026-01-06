@@ -14,6 +14,14 @@ from sqlalchemy.exc import OperationalError
 async def _process_analyze_async(note_id: str) -> None:
     from app.services.pipeline import pipeline
     await pipeline.process(note_id)
+    
+    # Trigger incremental reflection (Task 1)
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Note).where(Note.id == note_id))
+        note = res.scalars().first()
+        if note:
+            from workers.reflection_tasks import reflection_incremental
+            reflection_incremental.delay(note.user_id)
 
 @celery.task(name="analyze.process_note", autoretry_for=(OperationalError, OSError), retry_backoff=True, max_retries=3)
 def process_analyze(note_id: str):

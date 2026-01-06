@@ -133,7 +133,11 @@ class NotePipeline:
         user = user_res.scalars().first()
 
         # Use Core Analyze (includes RAG + Intent)
-        await analyze_core.analyze_step(note, user, db, short_term_memory)
+        analysis, cache_hit = await analyze_core.analyze_step(note, user, db, short_term_memory)
+        
+        # Store cache status in analysis blob for later logging if needed
+        if isinstance(note.ai_analysis, dict):
+             note.ai_analysis["_cache_hit"] = cache_hit
         
         note.status = NoteStatus.ANALYZED
         await db.commit()

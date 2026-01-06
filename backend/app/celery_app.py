@@ -70,4 +70,8 @@ celery.conf.beat_schedule = {
         "task": "cleanup_memory",
         "schedule": crontab(hour=3, minute=0),
     },
+    "report-cache-stats-daily": {
+        "task": "report_cache_stats",
+        "schedule": crontab(hour=0, minute=0),
+    },
 }

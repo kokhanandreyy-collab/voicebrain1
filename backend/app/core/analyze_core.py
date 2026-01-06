@@ -118,7 +118,7 @@ class AnalyzeCore:
     3. Adaptive Learning: Updates user identity and preferences based on analysis results.
     4. Feedback Loop: Identifies ambiguity to ask clarifying questions.
     """
-    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
+    async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> tuple[Dict[str, Any], bool]:
         """
         Orchestrates the analysis: RAG Context -> AI Analysis -> Save
         """
@@ -289,7 +289,7 @@ class AnalyzeCore:
             "text": f"Analyzed: {analysis.get('title')}"
         })
         
-        return analysis
+        return analysis, cache_hit
 
     def _apply_analysis_to_note(self, note: Note, analysis: Dict[str, Any]):
         note.title = analysis.get("title", "Untitled Note")

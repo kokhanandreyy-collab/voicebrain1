@@ -20,6 +20,13 @@ async def _process_analyze_async(note_id: str) -> None:
         res = await db.execute(select(Note).where(Note.id == note_id))
         note = res.scalars().first()
         if note:
+            # 1.1 Cache Monitoring Log (Request Requirement)
+            from infrastructure.metrics import get_cache_hit_rate
+            hit_rate = get_cache_hit_rate()
+            is_hit = (note.ai_analysis or {}).get("_cache_hit", False)
+            msg = "Cache hit" if is_hit else "Cache miss"
+            logger.info(msg, extra={"hit_rate": f"{hit_rate}%", "note_id": note_id})
+            
             from workers.reflection_tasks import reflection_incremental
             reflection_incremental.delay(note.user_id)
 

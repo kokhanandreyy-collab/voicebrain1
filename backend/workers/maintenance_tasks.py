@@ -216,3 +216,11 @@ async def _cleanup_memory_async() -> None:
         logger.error(f"Cleanup Memory Error: {e}")
     finally:
         await db.close()
+@celery.task(name="report_cache_stats")
+def report_cache_stats_task():
+    async_to_sync(_report_cache_stats_async)()
+
+async def _report_cache_stats_async() -> None:
+    from infrastructure.metrics import get_cache_hit_rate
+    hit_rate = get_cache_hit_rate()
+    logger.info(f"Daily Cache Performance Report: Semantic Search Hit Rate is {hit_rate}%")

@@ -15,6 +15,7 @@ class AnalysisResult(BaseModel):
     entities: List[str] = Field(default_factory=list)
     priority: int = 4
     notion_properties: dict = Field(default_factory=list)
+    empathetic_comment: Optional[str] = None
     explicit_destination_app: Optional[str] = None
     explicit_folder: Optional[str] = None
 
@@ -27,5 +28,6 @@ class AIAnalysisPack(TypedDict):
     entities: List[str]
     priority: int
     notion_properties: dict
+    empathetic_comment: Optional[str]
     explicit_destination_app: Optional[str]
     explicit_folder: Optional[str]

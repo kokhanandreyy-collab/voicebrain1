@@ -202,7 +202,8 @@ class AIService:
                 "15. 'explicit_folder': Extract the specific folder, project, or database name mentioned (e.g., 'Work', 'Journal', 'Home') or null.\n"
                 "16. 'identity_update': If the user explicitly states a preference, corrects a memory, or defines a term (e.g. 'P0 is critical', 'I am vegan', 'My dog is Rex'), extract it here. Otherwise null.\n"
                 "17. 'adaptive_update': (Dictionary|Null) If the user provides a specific answer to a previous clarification or defines a new preference key-value pair, output it here. E.g. {'high_priority': 'P0', 'project_alpha_deadline': 'Friday'}.\n"
-                "18. 'ask_clarification': (String|Null) If you are unsure about a priority, entity, or preference, ask the user specifically. E.g. 'Is P0 considered High or Urgent?'.\n\n"
+                "18. 'ask_clarification': (String|Null) If you are unsure about a priority, entity, or preference, ask the user specifically. E.g. 'Is P0 considered High or Urgent?'.\n"
+                "19. 'empathetic_comment': (String|Null) A short (1 sentence) empathetic remark based on the user's mood. E.g. 'I see you're frustrated—how can I help make this easier?' if negative, or 'Great energy here!' if positive.\n\n"
                 "CRITICAL: The 'summary' and 'action_items' fields must NOT contain the routing command itself (e.g., 'send this to Todoist', 'put this in my work project'). Clean the text by removing these instructions."
             )
             

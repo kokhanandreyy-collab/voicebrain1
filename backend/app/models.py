@@ -58,6 +58,7 @@ class User(Base):
     billing_cycle_start = Column(DateTime(timezone=True), nullable=True)
     billing_period = Column(String, default="monthly") # monthly, yearly
     cancel_at_period_end = Column(Boolean, default=False)
+    emotion_history = Column(JSON, default=[]) # History of moods: [{"date": "...", "mood": "...", "score": 0.5}]
     
     # Usage
     monthly_usage_seconds = Column(Integer, default=0)

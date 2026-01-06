@@ -139,6 +139,14 @@ class AnalyzeCore:
         user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
             
         target_lang = user.target_language if user else "Original"
+
+        # Inject Emotion History (Task 1 & 3)
+        if user and user.emotion_history:
+            recent = user.emotion_history[-5:]
+            emo_str = ", ".join([f"{e.get('mood')} ({e.get('date', 'anytime')})" for e in recent])
+            user_bio += f"\n\nRecent Mood History: {emo_str}"
+            last_mood = recent[-1].get('mood', 'neutral')
+            user_bio += f"\nInstruction: The user was previously {last_mood}. Be empathetic."
         
         hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
         
@@ -214,6 +222,20 @@ class AnalyzeCore:
         
         # 3. Apply results
         self._apply_analysis_to_note(note, analysis)
+
+        # 3.0 Emotional Memory Update (Task 3)
+        if user:
+            new_mood = analysis.get("mood", "Neutral")
+            history = list(user.emotion_history or [])
+            history.append({
+                "mood": new_mood,
+                "date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "note_id": note.id
+            })
+            # Limit to last 20 entries
+            user.emotion_history = history[-20:]
+            from sqlalchemy import update
+            await db.execute(update(User).where(User.id == user.id).values(emotion_history=user.emotion_history))
         
         # 3.1 Adaptive Learning: Process Identity Update
         identity_update = analysis.get("identity_update")
@@ -285,6 +307,7 @@ class AnalyzeCore:
             entities=analysis.get("entities", []),
             priority=analysis.get("priority", 4),
             notion_properties=analysis.get("notion_properties", {}),
+            empathetic_comment=analysis.get("empathetic_comment"),
             explicit_destination_app=analysis.get("explicit_destination_app"),
             explicit_folder=analysis.get("explicit_folder")
         )

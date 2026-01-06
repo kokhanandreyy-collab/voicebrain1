@@ -183,7 +183,13 @@ class NotePipeline:
                 try:
                     safe_title = escape_markdown(note.title or "Untitled")
                     safe_intent = escape_markdown((note.ai_analysis or {}).get("intent", "note"))
-                    msg = f"✅ **Saved!**\nTitle: {safe_title}\nIntent: {safe_intent}"
+                    empathy = (note.ai_analysis or {}).get("empathetic_comment")
+                    
+                    msg = f"✅ **Saved!**\n"
+                    if empathy:
+                        msg += f"_{escape_markdown(empathy)}_\n\n"
+                    
+                    msg += f"Title: {safe_title}\nIntent: {safe_intent}"
 
                     # Check for adaptive clarification
                     if note.action_items:

@@ -166,67 +166,42 @@ class AIService:
             ).model_dump()
 
         try:
-            # System Prompt for DeepSeek
-            # We add specific place in prompt for User Context
-            context_instruction: str = f"\nUSER CONTEXT (Bio/Jargon): {user_context}\nUse this context to correctly identify names, projects, and specific jargon." if user_context else ""
-            
-            # RAG Context
-            rag_instruction: str = f"\n\nPREVIOUS CONTEXT (Related Notes):\n{previous_context}\nUse this context to maintain continuity, link related ideas, or avoid repeating already addressed tasks." if previous_context else ""
-
-            # Language Instruction
-            lang_instruction: str = ""
+            # Build dynamic context block
+            ctx_parts = []
+            if user_context: ctx_parts.append(f"USER CONTEXT: {user_context}")
+            if previous_context: ctx_parts.append(f"HISTORY: {previous_context}")
             if target_language and target_language != "Original":
-                lang_instruction = f"\nCRITICAL: Regardless of the input language, ALWAYS generate the Title, Summary, and Action Items in {target_language} language."
+                ctx_parts.append(f"CRITICAL: Output title/summary/items in {target_language}.")
+            context_str = "\n".join(ctx_parts)
 
             default_prompt: str = (
-                "You are an advanced AI assistant powered by DeepSeek V3. "
-                "Analyze the user's audio transcription. "
-                f"{context_instruction}"
-                f"{rag_instruction}"
-                f"{lang_instruction}"
-                "Return a valid JSON object with the following fields:\n"
-                "1. 'title': A short, catchy, creative title.\n"
-                "2. 'summary': A markdown formatted summary with bullet points and sections.\n"
-                "3. 'action_items': A list of actionable tasks (strings), e.g., ['Buy milk', 'Email John']. Empty if none.\n"
-                "4. 'tags': A list of 3-7 automatic tags.\n"
-                "5. 'mood': One word describing the mood (positive, neutral, negative, or frustrated).\n"
-                "6. 'calendar_events': A list of objects { 'title': str, 'date': str (ISO or description), 'time': str } if any dates/times are mentioned. Empty list if none.\n"
-                "7. 'diarization': A list of objects { 'speaker': str, 'text': str } representing the conversation flow.\n"
-                "8. 'health_data': A structured object for Apple Health export. If relevant data is found, return { 'nutrition': { 'calories': int, 'protein': int, 'carbs': int, 'fat': int, 'water_ml': int, 'name': str }, 'workout': { 'type': str, 'duration_minutes': int, 'calories_burned': int }, 'symptoms': [str] }. If no health data, return null.\n"
-                "9. 'intent': Classify the primary intent into one of: ['task', 'event', 'note', 'crm', 'journal', 'shopping', 'idea'].\n"
-                "10. 'suggested_project': Guess the project context (e.g., 'Work', 'Home', 'Startup', 'Health', 'Travel').\n"
-                "11. 'entities': A list of strings (people, places, specific companies/products mentioned) for linking.\n"
-                "12. 'priority': Integer from 1 (High/Urgent) to 4 (Low/Someday).\n"
-                "13. 'notion_properties': A JSON object guessing properties for a Notion database entry (e.g. {'Status': 'In Progress', 'Category': 'Research'}).\n"
-                "14. 'explicit_destination_app': Detect if the user explicitly specifies a destination in the voice command. One of ['todoist', 'notion', 'slack', 'google_calendar', 'google_drive', 'dropbox', 'email'] or null if none mentioned.\n"
-                "15. 'explicit_folder': Extract the specific folder, project, or database name mentioned (e.g., 'Work', 'Journal', 'Home') or null.\n"
-                "16. 'identity_update': If the user explicitly states a preference, corrects a memory, or defines a term (e.g. 'P0 is critical', 'I am vegan', 'My dog is Rex'), extract it here. Otherwise null.\n"
-                "17. 'adaptive_update': (Dictionary|Null) If the user provides a specific answer to a previous clarification or defines a new preference key-value pair, output it here. E.g. {'high_priority': 'P0', 'project_alpha_deadline': 'Friday'}.\n"
-                "18. 'ask_clarification': (String|Null) If you are unsure about a priority, entity, or preference, ask the user specifically. E.g. 'Is P0 considered High or Urgent?'.\n"
-                "19. 'empathetic_comment': (String|Null) A short (1 sentence) empathetic remark based on the user's mood. E.g. 'I see you're frustrated—how can I help make this easier?' if negative, or 'Great energy here!' if positive.\n\n"
-                "CRITICAL: The 'summary' and 'action_items' fields must NOT contain the routing command itself (e.g., 'send this to Todoist', 'put this in my work project'). Clean the text by removing these instructions."
+                "You are VoiceBrain AI. Analyze the transcript and return ONLY a JSON object.\n"
+                f"{context_str}\n\n"
+                "Schema:\n"
+                "1. 'title': Catchy title.\n"
+                "2. 'summary': Markdown summary; remove audio/routing commands.\n"
+                "3. 'action_items': List of strings; exclude 'send message' style commands.\n"
+                "4. 'tags': 3-5 tags.\n"
+                "5. 'mood': one of [positive, neutral, negative, frustrated].\n"
+                "6. 'calendar_events': [{title, date, time}].\n"
+                "7. 'diarization': [{speaker, text}].\n"
+                "8. 'intent': one of [task, event, note, crm, journal, idea].\n"
+                "9. 'suggested_project': e.g. 'Work', 'Home'.\n"
+                "10. 'priority': 1 (High) to 4 (Low).\n"
+                "11. 'explicit_destination_app': e.g. 'todoist', 'slack' or null.\n"
+                "12. 'adaptive_update': Dict of learned preferences or null.\n"
+                "13. 'ask_clarification': Question if unsure about intent.\n"
+                "14. 'empathetic_comment': 1 sentence based on mood.\n"
+                "15. 'health_data', 'entities', 'notion_properties', 'identity_update', 'explicit_folder': as needed."
             )
-            
-            # If the prompt text in DB has {user_context}, we can format it. 
-            # If not, we rely on the default logic above inserting it.
-            # But get_system_prompt returns raw text.
-            # If the user edited the prompt in Admin Panel, they might not have {user_context}.
-            # So we should probably append it to the message list if possible, or append to system prompt text.
             
             base_system_prompt: str = await self.get_system_prompt("general_analysis", default_prompt)
             
-            # If the fetched prompt doesn't look like it has context logic, we append it.
-            if user_context and "USER CONTEXT" not in base_system_prompt:
-                 base_system_prompt += f"\n\nUSER CONTEXT: {user_context}"
-            
-            if previous_context and "PREVIOUS CONTEXT" not in base_system_prompt:
-                 base_system_prompt += f"\n\nPREVIOUS CONTEXT:\n{previous_context}"
-
-            # If not present already, append language instruction
-            if lang_instruction and "ALWAYS generate the Title" not in base_system_prompt:
-                 base_system_prompt += f"\n{lang_instruction}"
-            
-            system_prompt: str = base_system_prompt
+            # Inject context if not present in custom prompt
+            if context_str and "USER CONTEXT" not in base_system_prompt and "HISTORY" not in base_system_prompt:
+                 system_prompt: str = f"{context_str}\n\n{base_system_prompt}"
+            else:
+                 system_prompt: str = base_system_prompt
 
             # Check Cache
             text_hash: str = hashlib.sha256(text.encode()).hexdigest()

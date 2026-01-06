@@ -15,7 +15,8 @@ celery = Celery(
         "workers.maintenance_tasks",
         "workers.reflection_tasks",
         "tasks.cleanup_memory",
-        "tasks.cleanup_cache"
+        "tasks.cleanup_cache",
+        "tasks.proactive"
     ]
 )
 
@@ -44,6 +45,10 @@ celery.conf.beat_schedule = {
     "cleanup-cache-daily": {
         "task": "cleanup_cache",
         "schedule": crontab(hour=3, minute=30),
+    },
+    "proactive-reminders-daily": {
+        "task": "proactive_reminders_daily",
+        "schedule": crontab(hour=10, minute=0),
     },
     "generate-weekly-review": {
         "task": "generate_weekly_review",

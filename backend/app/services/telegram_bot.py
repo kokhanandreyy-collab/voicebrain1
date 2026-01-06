@@ -182,6 +182,17 @@ async def cmd_toggle(message: Message, command: CommandObject):
         status = "Enabled" if flags[key] else "Disabled"
         await message.answer(f"✅ {key} is now *{status}*.", parse_mode="Markdown")
 
+@dp.callback_query(F.data.startswith("proactive_"))
+async def handle_proactive_callback(callback: types.CallbackQuery):
+    action = callback.data.split(":")[0]
+    
+    if action == "proactive_yes":
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer("📝 Отлично! Отправь мне голосовое или текст, и я добавлю это в контекст или создам задачу.")
+    else:
+        await callback.message.delete_reply_markup()
+        await callback.answer("Ок, спрошу позже!")
+
 async def start_bot():
     if not bot:
         logger.warning("TELEGRAM_BOT_TOKEN not set. Telegram Bot will not start.")

@@ -74,4 +74,8 @@ celery.conf.beat_schedule = {
         "task": "report_cache_stats",
         "schedule": crontab(hour=0, minute=0),
     },
+    "weekly-memory-improvement": {
+        "task": "memory.trigger_weekly_improvement",
+        "schedule": crontab(hour=5, minute=0, day_of_week=1), # Mondays 5 AM
+    },
 }

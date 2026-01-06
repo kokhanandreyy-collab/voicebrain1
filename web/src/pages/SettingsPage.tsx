@@ -40,6 +40,20 @@ export default function SettingsPage() {
     const [userBio, setUserBio] = useState('');
     const [targetLanguage, setTargetLanguage] = useState('Original');
     const [savingBio, setSavingBio] = useState(false);
+    const [improvingMemory, setImprovingMemory] = useState(false);
+
+    const handleImproveMemory = async () => {
+        setImprovingMemory(true);
+        try {
+            await api.post('/users/improve-memory');
+            alert("Memory improvement process started! This may take a few minutes as we analyze and merge your long-term memories.");
+        } catch (error) {
+            console.error(error);
+            alert("Failed to start memory improvement.");
+        } finally {
+            setImprovingMemory(false);
+        }
+    };
 
     // Privacy State
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -590,6 +604,32 @@ export default function SettingsPage() {
                                     </Button>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Self-Improving Memory Section */}
+                        <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-soft">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                    <Zap size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold dark:text-white">Self-Improving Memory</h2>
+                                    <p className="text-slate-500 text-sm">Fine-tune your long-term knowledge.</p>
+                                </div>
+                            </div>
+
+                            <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+                                Our AI can analyze your entire long-term memory to merge duplicates, resolve contradictions, and identify new connections between insights. This makes the "Ask AI" feature significantly smarter over time.
+                            </p>
+
+                            <Button
+                                onClick={handleImproveMemory}
+                                disabled={improvingMemory}
+                                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+                            >
+                                {improvingMemory ? <Loader2 className="animate-spin" /> : <Zap size={18} />}
+                                {improvingMemory ? 'Optimizing Brain...' : 'Optimize & Clean Memory'}
+                            </Button>
                         </div>
 
                         {/* Language Settings */}

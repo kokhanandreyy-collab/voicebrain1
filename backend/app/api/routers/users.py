@@ -190,3 +190,10 @@ async def get_current_user_profile(
         "tier": current_user.tier,
         "is_active": current_user.is_active
     }
+@router.post("/improve-memory")
+async def trigger_memory_improvement(
+    current_user: User = Depends(get_current_user)
+):
+    from workers.reflection_tasks import self_improve_memory
+    self_improve_memory.delay(current_user.id)
+    return {"status": "accepted", "message": "Memory improvement task started."}

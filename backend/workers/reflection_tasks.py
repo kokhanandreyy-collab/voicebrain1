@@ -241,3 +241,86 @@ async def _trigger_reflection_async():
         for user in active_users:
             logger.info(f"Queueing reflection for user {user.id}")
             reflection_daily.delay(user.id)
+
+@shared_task(name="memory.self_improve")
+def self_improve_memory(user_id: str):
+    async_to_sync(_self_improve_memory_async)(user_id)
+
+async def _self_improve_memory_async(user_id: str):
+    """
+    Weekly optimization of memory: merges duplicates and removes contradictions.
+    """
+    from sqlalchemy import update
+    import json
+    
+    logger.info(f"Self-improving memory for user {user_id}")
+    async with AsyncSessionLocal() as db:
+        # 1. Fetch active memories
+        res_mem = await db.execute(
+            select(LongTermMemory)
+            .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
+            .order_by(LongTermMemory.created_at.desc())
+            .limit(100) # Limit to avoid context overflow
+        )
+        memories = res_mem.scalars().all()
+        if len(memories) < 5:
+            logger.info("Not enough memories to optimize.")
+            return
+
+        # 2. Contextualize for AI
+        mem_list = [f"ID: {m.id} [Score: {m.importance_score}]: {m.summary_text}" for m in memories]
+        prompt = (
+            "You are a Memory Optimization Agent. Below are long-term memories of a user.\n"
+            "Analyze them and identify:\n"
+            "1. MERGES: Multiple IDs that represent the same concept/event. Write a new, better summary.\n"
+            "2. DELETIONS: Contradictory or obsolete memories (keep the truth).\n"
+            "3. RECOMMENDATIONS: New insights to add.\n\n"
+            "Return JSON:\n"
+            "{\n"
+            "  'merges': [{'ids': ['id1', 'id2'], 'summary': 'Combined text', 'score': 9.0}],\n"
+            "  'deletions': ['id3']\n"
+            "}\n\n"
+            f"Memories:\n" + "\n".join(mem_list)
+        )
+
+        try:
+            resp = await ai_service.get_chat_completion([
+                {"role": "system", "content": "You are a memory architect. Respond in Russian if context is in Russian. Return ONLY JSON."},
+                {"role": "user", "content": prompt}
+            ])
+            data = json.loads(ai_service.clean_json_response(resp))
+        except Exception as e:
+            logger.error(f"AI memory optimization failed: {e}")
+            return
+
+        # 3. Apply Actions
+        # Merges
+        for m in data.get("merges", []):
+            ids = m.get("ids", [])
+            new_text = m.get("summary")
+            new_score = m.get("score", 7.0)
+            if ids and new_text:
+                # Add new
+                emb = await ai_service.get_embedding(new_text)
+                db.add(LongTermMemory(user_id=user_id, summary_text=new_text, importance_score=new_score, embedding=emb))
+                # Archive old
+                await db.execute(update(LongTermMemory).where(LongTermMemory.id.in_(ids)).values(is_archived=True))
+
+        # Deletions
+        del_ids = data.get("deletions", [])
+        if del_ids:
+            await db.execute(update(LongTermMemory).where(LongTermMemory.id.in_(del_ids)).values(is_archived=True))
+
+        await db.commit()
+        logger.info(f"Memory optimized for user {user_id}. Applied {len(data.get('merges', []))} merges, deleted {len(del_ids)} items.")
+
+@shared_task(name="memory.trigger_weekly_improvement")
+def trigger_weekly_memory_improvement():
+    async_to_sync(_trigger_weekly_improvement_async)()
+
+async def _trigger_weekly_improvement_async():
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(User).where(User.is_active == True))
+        users = res.scalars().all()
+        for user in users:
+            self_improve_memory.delay(user.id)

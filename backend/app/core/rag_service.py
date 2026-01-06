@@ -95,25 +95,11 @@ class RagService:
             return {"vector": "", "graph": ""}
 
     async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
-        """Fetch top long-term memories. Prioritize high importance, recent, and relevant."""
+        """Fetch top long-term memories. Prioritize high importance and recency."""
         try:
-            now = datetime.datetime.now(datetime.timezone.utc)
-            decay_const = getattr(settings, "RAG_TEMPORAL_DECAY_DAYS", 30)
-            
-            # Helper to calculate temporal score
-            def calculate_temporal_score(mem):
-                created_at = mem.created_at
-                if created_at.tzinfo is None:
-                    created_at = created_at.replace(tzinfo=datetime.timezone.utc)
-                
-                days_since = (now - created_at).total_seconds() / 86400.0
-                freshness = math.exp(-max(0, days_since) / decay_const)
-                importance = getattr(mem, 'importance_score', 5.0) or 5.0
-                return importance * freshness
-
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
-                 # Hybrid search: broad vector match -> strict temporal re-rank
+                 # Hybrid search: broad vector match -> re-rank by importance and recency
                  result = await db.execute(
                       select(LongTermMemory)
                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
@@ -121,18 +107,18 @@ class RagService:
                       .limit(50)
                  )
                  candidates = list(result.scalars().all())
-                 candidates.sort(key=calculate_temporal_score, reverse=True)
+                 # Re-rank by importance and date
+                 candidates.sort(key=lambda x: (getattr(x, 'importance_score', 5.0) or 5.0, x.created_at), reverse=True)
                  final = candidates[:5]
             else:
-                  # General summary retrieval
-                  result = await db.execute(
-                      select(LongTermMemory)
-                      .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
-                      .limit(100) 
-                  )
-                  candidates = list(result.scalars().all())
-                  candidates.sort(key=calculate_temporal_score, reverse=True)
-                  final = candidates[:5]
+                   # General summary retrieval: strictly by importance and date
+                   result = await db.execute(
+                       select(LongTermMemory)
+                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
+                       .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
+                       .limit(5)
+                   )
+                   final = list(result.scalars().all())
 
             parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]
             return "\n".join(parts) if parts else "No long-term knowledge recorded yet."

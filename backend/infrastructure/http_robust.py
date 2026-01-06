@@ -11,6 +11,7 @@ import pybreaker
 from loguru import logger
 import asyncio
 from typing import Any, Callable, TypeVar, Union
+from common.errors import ServiceError
 
 # --- Types ---
 T = TypeVar("T")
@@ -64,8 +65,19 @@ class RobustAsyncClient:
         @robust_retry(max_attempts=attempts)
         async def _make_request():
             logger.debug(f"HTTP {method} {url} - Attempting...")
-            response = await self.client.request(method, url, **kwargs)
-            return response
+            try:
+                response = await self.client.request(method, url, **kwargs)
+                return response
+            except pybreaker.CircuitBreakerError as e:
+                raise ServiceError(message=f"Circuit Open for {url}", service_name="http_external", details={"url": url}) from e
+            except Exception as e:
+                # Let retry handle transient, but map to ServiceError on final failure if needed
+                # Actually, robust_retry reraises the original. 
+                # We can catch outside or let bubbling.
+                # If we want to wrap, we'd need to do it outside the retry decorator or handle reraise=False.
+                # For robust infrastructure, usually we want the raw error BUT wrapped for the app layer.
+                # Let's keep it simple: retry logic is good, but if breaker opens, it raises CircuitBreakerError.
+                raise
 
         return await _make_request()
 

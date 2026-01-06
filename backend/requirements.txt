@@ -34,3 +34,6 @@ pytest
 pytest-asyncio
 aiogram
 tenacity
+structlog==24.1.0
+prometheus-fastapi-instrumentator==7.0.0
+sentry-sdk[fastapi]==1.40.0

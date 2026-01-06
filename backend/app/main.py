@@ -5,8 +5,13 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.auth import AuthMiddleware
+from app.api.middleware.logging_middleware import LoggingMiddleware
 from infrastructure.rate_limit import limiter
 from infrastructure.config import settings
+from infrastructure.logging import configure_logging
+import sentry_sdk
+from prometheus_fastapi_instrumentator import Instrumentator
+import structlog
 
 app = FastAPI(
     title="VoiceBrain API",
@@ -28,15 +33,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuthMiddleware)
+app.add_middleware(LoggingMiddleware)
 
 from fastapi import Request, status, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-import logging
 import traceback
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -61,7 +66,7 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception: {exc}\n{traceback.format_exc()}")
+    logger.error("Global exception", error=str(exc), traceback=traceback.format_exc())
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"code": "internal_error", "message": "An unexpected error occurred. Please try again later."},
@@ -71,6 +76,21 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 async def startup():
+    # 1. Logging
+    configure_logging()
+    
+    # 2. Sentry
+    if settings.SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            traces_sample_rate=0.1,
+            environment=settings.ENVIRONMENT
+        )
+        print("Sentry initialized")
+
+    # 3. Prometheus Metrics
+    Instrumentator().instrument(app).expose(app)
+
     # Database tables are now managed by Alembic
     # await engine.begin() ... 
     

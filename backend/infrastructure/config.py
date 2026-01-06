@@ -150,6 +150,9 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: Optional[str] = None
     VAPID_CLAIMS_EMAIL: str = "mailto:admin@voicebrain.app"
 
+    # Observability
+    SENTRY_DSN: Optional[str] = None
+
     class Config:
         case_sensitive = True
         env_file = ".env"

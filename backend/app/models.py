@@ -295,8 +295,9 @@ class LongTermMemory(Base):
     user_id = Column(String, ForeignKey("users.id"))
     
     summary_text = Column(Text, nullable=False)
-    importance_score = Column(Float, default=8.0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    importance_score = Column(Float, default=8.0, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    is_archived = Column(Boolean, default=False, index=True) # Soft delete
     
     from pgvector.sqlalchemy import VECTOR
     embedding = Column(VECTOR(1536))

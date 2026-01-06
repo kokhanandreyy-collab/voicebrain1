@@ -97,9 +97,8 @@ class RagService:
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
                  # Hybrid: Get 50 most similar (broad search)
-                 result = await db.execute(
                      select(LongTermMemory)
-                     .where(LongTermMemory.user_id == user_id)
+                     .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
                      .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
                      .limit(50)
                  )
@@ -110,7 +109,7 @@ class RagService:
             else:
                   result = await db.execute(
                       select(LongTermMemory)
-                      .where(LongTermMemory.user_id == user_id)
+                      .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
                       .order_by(LongTermMemory.importance_score.desc(), LongTermMemory.created_at.desc())
                       .limit(5)
                   )

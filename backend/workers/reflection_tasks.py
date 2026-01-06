@@ -108,8 +108,8 @@ async def _process_reflection_async(user_id: str):
                  relations = raw_data if isinstance(raw_data, list) else raw_data.get("relations", [])
                  logger.info(f"Graph extraction: generated {len(relations)} connections")
                  
-                 from app.models import NoteRelation
-                 added_count = 0
+                from app.models import NoteRelation
+                 new_relations_buffer = []
                  for r in relations:
                      n1 = r.get('note1_id') or r.get('id1')
                      n2 = r.get('note2_id') or r.get('id2')
@@ -120,17 +120,17 @@ async def _process_reflection_async(user_id: str):
                          r_strength = 1.0
                      
                      if n1 and n2:
-                         nr = NoteRelation(
+                         new_relations_buffer.append(NoteRelation(
                              note_id1=n1,
                              note_id2=n2,
                              relation_type=r_type,
                              strength=r_strength
-                         )
-                         db.add(nr)
-                         added_count += 1
+                         ))
                  
-                 if added_count > 0:
-                     logger.debug(f"Saved {added_count} new note relations to DB.")
+                 if new_relations_buffer:
+                     # Task 2: Batch Insert Optimization
+                     db.add_all(new_relations_buffer)
+                     logger.debug(f"Saved {len(new_relations_buffer)} new note relations to DB (Batch).")
                          
              except Exception as rel_err:
                  logger.error(f"Graph extraction failed: {rel_err}")

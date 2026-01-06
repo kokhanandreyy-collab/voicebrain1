@@ -83,7 +83,7 @@ class RagService:
         try:
             result = await db.execute(
                 select(LongTermMemory)
-                .where(LongTermMemory.user_id == user_id)
+                .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
                 .order_by(desc(LongTermMemory.importance_score))
                 .limit(3)
             )

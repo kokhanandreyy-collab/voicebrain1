@@ -11,7 +11,9 @@ class ShortTermMemory:
     """
     def __init__(self):
         self._redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
-        self.ttl = 3600
+        # Task 4: Cache warming logic is implicit via 'get', but eviction is key.
+        # Max size 10 limits growth. TTL 12h handles stale sessions.
+        self.ttl = 43200 # 12 hours
         self.max_size = 10
 
     async def add_action(self, user_id: str, action_data: Dict[str, Any]):

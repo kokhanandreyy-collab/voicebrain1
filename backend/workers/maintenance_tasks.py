@@ -187,16 +187,17 @@ async def _cleanup_memory_async() -> None:
             db.delete(n)
             c_notes += 1
             
-        # 2. Delete unimportant LongTermMemories (Score < 5, > 180 days)
+        # 2. Archive unimportant LongTermMemories (Score < 5, > 180 days) - Task 3: Soft Delete
         res_mem = await db.execute(select(LongTermMemory).where(
             LongTermMemory.importance_score < 5.0,
-            LongTermMemory.created_at < cutoff_ltm
+            LongTermMemory.created_at < cutoff_ltm,
+            LongTermMemory.is_archived == False
         ))
-        mems_to_del = res_mem.scalars().all()
+        mems_to_archive = res_mem.scalars().all()
         
         c_mems = 0
-        for m in mems_to_del:
-            db.delete(m)
+        for m in mems_to_archive:
+            m.is_archived = True
             c_mems += 1
 
         # 3. Prune Weak Relations (Strength < 0.3)
@@ -210,7 +211,7 @@ async def _cleanup_memory_async() -> None:
             c_rels += 1
             
         await db.commit()
-        logger.info(f"Memory Cleanup: Deleted {c_notes} Notes, {c_mems} LTM entries, {c_rels} Weak Relations.")
+        logger.info(f"Memory Cleanup: Deleted {c_notes} Notes, Archived {c_mems} LTM entries, Deleted {c_rels} Weak Relations.")
     except Exception as e:
         logger.error(f"Cleanup Memory Error: {e}")
     finally:

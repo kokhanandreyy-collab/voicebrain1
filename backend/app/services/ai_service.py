@@ -189,7 +189,7 @@ class AIService:
                 "2. 'summary': A markdown formatted summary with bullet points and sections.\n"
                 "3. 'action_items': A list of actionable tasks (strings), e.g., ['Buy milk', 'Email John']. Empty if none.\n"
                 "4. 'tags': A list of 3-7 automatic tags.\n"
-                "5. 'mood': One word describing the mood.\n"
+                "5. 'mood': One word describing the mood (positive, neutral, negative, or frustrated).\n"
                 "6. 'calendar_events': A list of objects { 'title': str, 'date': str (ISO or description), 'time': str } if any dates/times are mentioned. Empty list if none.\n"
                 "7. 'diarization': A list of objects { 'speaker': str, 'text': str } representing the conversation flow.\n"
                 "8. 'health_data': A structured object for Apple Health export. If relevant data is found, return { 'nutrition': { 'calories': int, 'protein': int, 'carbs': int, 'fat': int, 'water_ml': int, 'name': str }, 'workout': { 'type': str, 'duration_minutes': int, 'calories_burned': int }, 'symptoms': [str] }. If no health data, return null.\n"

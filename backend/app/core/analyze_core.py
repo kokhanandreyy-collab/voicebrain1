@@ -146,7 +146,8 @@ class AnalyzeCore:
             emo_str = ", ".join([f"{e.get('mood')} ({e.get('date', 'anytime')})" for e in recent])
             user_bio += f"\n\nRecent Mood History: {emo_str}"
             last_mood = recent[-1].get('mood', 'neutral')
-            user_bio += f"\nInstruction: The user was previously {last_mood}. Be empathetic."
+            user_bio += f"\nUser current mood: {last_mood}"
+            user_bio += f"\nInstruction: Be empathetic to the user's current mood."
         
         hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
         

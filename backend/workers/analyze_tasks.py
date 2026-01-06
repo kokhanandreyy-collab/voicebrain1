@@ -43,36 +43,34 @@ async def _process_analyze_async(note_id: str) -> None:
                 .limit(1)
             )
             cached_entry = cache_res.scalars().first()
-            if cached_entry:
-                logger.info(f"Cache hit: используя этот результат для {note_id}")
-                track_cache_hit("note_analysis")
-                analysis = cached_entry.result
-                cache_hit = True
-        except Exception as e:
-            logger.warning(f"Cache lookup failed: {e}")
-
-        if not cache_hit:
+        if cached_entry:
+            analysis = cached_entry.result
+            # Requirement 2: Log/track the specific cache prompt
+            dynamic_prompt = f"Используй этот cached result: {json.dumps(analysis, ensure_ascii=False)}"
+            logger.info(f"Cache hit: {dynamic_prompt}")
+            track_cache_hit("note_analysis")
+            cache_hit = True
+        else:
             track_cache_miss("note_analysis")
-            # 3. Build Dynamic Prompt
+            # 3. Build Dynamic Prompt with Memory (Miss case)
             ctx_parts = []
             if user:
                 if user.identity_summary:
                     ctx_parts.append(f"User identity: {user.identity_summary}")
                 if user.adaptive_preferences:
-                    prefs_json = json.dumps(user.adaptive_preferences)
-                    ctx_parts.append(f"Adaptive preferences: {prefs_json}")
+                    ctx_parts.append(f"Adaptive preferences: {json.dumps(user.adaptive_preferences, ensure_ascii=False)}")
                 
                 # Long-term knowledge from RAG
                 lt_summaries = await rag_service.get_long_term_memory(user.id, db)
                 if lt_summaries and "No long-term" not in lt_summaries:
                     ctx_parts.append(f"Long-term knowledge: {lt_summaries}")
 
-            dynamic_context = "\n".join(ctx_parts)
+            dynamic_prompt = "\n".join(ctx_parts)
             
-            # 4. Call AI
+            # 4. Call AI (Requirement 1: only if NOT hit)
             analysis = await ai_service.analyze_text(
                 note.transcription_text,
-                user_context=dynamic_context,
+                user_context=dynamic_prompt,
                 target_language=user.target_language if user else "Original"
             )
             

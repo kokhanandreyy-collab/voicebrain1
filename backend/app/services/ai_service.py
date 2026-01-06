@@ -137,6 +137,35 @@ class AIService:
             
         return default_text
 
+    async def _track_usage(self, usage: Any) -> None:
+        """
+        Logs and tracks AI token usage in Redis for daily reporting.
+        """
+        if not usage:
+            return
+            
+        prompt_tokens = usage.prompt_tokens
+        completion_tokens = usage.completion_tokens
+        total_tokens = usage.total_tokens
+        
+        logger.info(f"DeepSeek usage: input {prompt_tokens}, output {completion_tokens}, total {total_tokens}")
+        
+        if self.redis:
+            try:
+                today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+                key = f"ai_usage:daily:{today}"
+                
+                # Use a pipeline for atomicity
+                async with self.redis.pipeline(transaction=True) as pipe:
+                    await pipe.hincrby(key, "prompt_tokens", prompt_tokens)
+                    await pipe.hincrby(key, "completion_tokens", completion_tokens)
+                    await pipe.hincrby(key, "total_tokens", total_tokens)
+                    # Expire after 7 days
+                    await pipe.expire(key, 604800)
+                    await pipe.execute()
+            except Exception as e:
+                logger.warning(f"Failed to track AI usage in Redis: {e}")
+
     async def analyze_text(self, text: str, user_context: Optional[str] = None, target_language: str = "Original", previous_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze text using DeepSeek V3 (via OpenAI-compatible API).
@@ -222,6 +251,7 @@ class AIService:
                 ],
                 response_format={ "type": "json_object" }
             )
+            await self._track_usage(response.usage)
             content: str = response.choices[0].message.content or "{}"
             
             # Clean and Parse JSON
@@ -249,6 +279,7 @@ class AIService:
                         ],
                         response_format={ "type": "json_object" }
                     )
+                    await self._track_usage(retry_res.usage)
                     retry_content: str = self.clean_json_response(retry_res.choices[0].message.content or "{}")
                     result = json.loads(retry_content)
                     AnalysisResult(**result) # Validate repaired JSON
@@ -352,6 +383,7 @@ class AIService:
                  ],
                  response_format={ "type": "json_object" }
             )
+            await self._track_usage(response.usage)
             content: str = response.choices[0].message.content or "{}"
             cleaned_content: str = self.clean_json_response(content)
             try:
@@ -388,6 +420,7 @@ class AIService:
                 model="text-embedding-3-small",
                 input=text
             )
+            await self._track_usage(response.usage)
             embedding: List[float] = response.data[0].embedding
             
             # Cache Result
@@ -495,6 +528,7 @@ class AIService:
                 temperature=0.3, # Lower temperature for factual answers
                 max_tokens=500
             )
+            await self._track_usage(response.usage)
             return response.choices[0].message.content or "No answer generated."
         except Exception as e:
             logger.error(f"Ask AI Error: {e}")
@@ -546,6 +580,7 @@ class AIService:
                 temperature=0.7,
                 max_tokens=600
             )
+            await self._track_usage(response.usage)
             return response.choices[0].message.content or "No review generated."
         except Exception as e:
             logger.error(f"Weekly Review Error: {e}")
@@ -575,6 +610,7 @@ class AIService:
                 messages=messages,
                 temperature=0.7
             )
+            await self._track_usage(response.usage)
             return response.choices[0].message.content or ""
         except Exception as e:
             logger.error(f"AI Completion Error: {e}")

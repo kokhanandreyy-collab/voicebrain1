@@ -226,3 +226,36 @@ async def _report_cache_stats_async() -> None:
     reflection_rate = get_reflection_hit_rate()
     logger.info(f"Daily Cache Performance Report: Global Semantic Hit Rate is {global_rate}%")
     logger.info(f"Daily Cache Performance Report: Reflection Hit Rate is {reflection_rate}%")
+
+@celery.task(name="report_ai_usage")
+def report_ai_usage_task():
+    async_to_sync(_report_ai_usage_async)()
+
+async def _report_ai_usage_async() -> None:
+    """
+    Aggregates and reports total AI token usage for the current day.
+    """
+    if not ai_service.redis:
+        logger.warning("Redis not available for AI usage reporting.")
+        return
+        
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        key = f"ai_usage:daily:{today}"
+        
+        usage = await ai_service.redis.hgetall(key)
+        if not usage:
+            logger.info(f"No AI usage recorded for today ({today}).")
+            return
+            
+        prompt = usage.get("prompt_tokens", "0")
+        completion = usage.get("completion_tokens", "0")
+        total = usage.get("total_tokens", "0")
+        
+        logger.info(f"Daily AI Usage Report ({today}):")
+        logger.info(f" - Prompt Tokens: {prompt}")
+        logger.info(f" - Completion Tokens: {completion}")
+        logger.info(f" - Total Tokens: {total}")
+        
+    except Exception as e:
+        logger.error(f"Failed to generate daily AI usage report: {e}")

@@ -30,6 +30,7 @@ async def _process_analyze_async(note_id: str) -> None:
         current_embedding = await ai_service.generate_embedding(note.transcription_text)
         cache_hit = False
         analysis = None
+        cached_entry = None
 
         try:
             cache_res = await db.execute(
@@ -43,9 +44,11 @@ async def _process_analyze_async(note_id: str) -> None:
                 .limit(1)
             )
             cached_entry = cache_res.scalars().first()
+        except Exception as e:
+            logger.warning(f"Cache lookup failed: {e}")
+
         if cached_entry:
             analysis = cached_entry.result
-            # Requirement 2: Log/track the specific cache prompt
             dynamic_prompt = f"Используй этот cached result: {json.dumps(analysis, ensure_ascii=False)}"
             logger.info(f"Cache hit: {dynamic_prompt}")
             track_cache_hit("note_analysis")
@@ -54,20 +57,57 @@ async def _process_analyze_async(note_id: str) -> None:
             track_cache_miss("note_analysis")
             # 3. Build Dynamic Prompt with Memory (Miss case)
             ctx_parts = []
+            lt_summaries = ""
+            recent_notes = []
+            
             if user:
+                # 3.1 Always include Identity
                 if user.identity_summary:
                     ctx_parts.append(f"User identity: {user.identity_summary}")
+                
                 if user.adaptive_preferences:
                     ctx_parts.append(f"Adaptive preferences: {json.dumps(user.adaptive_preferences, ensure_ascii=False)}")
                 
-                # Long-term knowledge from RAG
+                # 3.2 Fetch Memories
+                # Long-term (Top-3 already limited in rag_service)
                 lt_summaries = await rag_service.get_long_term_memory(user.id, db)
                 if lt_summaries and "No long-term" not in lt_summaries:
                     ctx_parts.append(f"Long-term knowledge: {lt_summaries}")
+                
+                # Recent (Last 10 notes)
+                recent_notes_res = await db.execute(
+                    select(Note.title, Note.summary)
+                    .where(Note.user_id == user.id, Note.id != note_id, Note.summary.isnot(None))
+                    .order_by(Note.created_at.desc())
+                    .limit(10)
+                )
+                recent_notes = recent_notes_res.all()
+                if recent_notes:
+                    recent_str = "\n".join([f"- {r.title}: {r.summary[:100]}" for r in recent_notes])
+                    ctx_parts.append(f"Recent context: {recent_str}")
 
             dynamic_prompt = "\n".join(ctx_parts)
             
-            # 4. Call AI (Requirement 1: only if NOT hit)
+            # --- TOKEN MANAGEMENT / TRUNCATION (Requirement) ---
+            token_count = len(dynamic_prompt) // 4
+            if token_count > 800:
+                logger.warning(f"Context truncated to ~{token_count} tokens for user {user.id}")
+                pruned_parts = []
+                if user and user.identity_summary:
+                    pruned_parts.append(f"User identity: {user.identity_summary}")
+                
+                if lt_summaries and "No long-term" not in lt_summaries:
+                    pruned_parts.append(f"Long-term knowledge (Trimmed): {lt_summaries[:1000]}")
+                
+                if recent_notes:
+                    # Stricter trim for recent if total is still too high
+                    recent_str = "\n".join([f"- {r.title}: {r.summary[:50]}" for r in recent_notes])
+                    pruned_parts.append(f"Recent context (Trimmed): {recent_str}")
+                
+                dynamic_prompt = "\n".join(pruned_parts)
+                logger.info(f"Context truncated to ~{len(dynamic_prompt)//4} tokens")
+            
+            # 4. Call AI
             analysis = await ai_service.analyze_text(
                 note.transcription_text,
                 user_context=dynamic_prompt,
@@ -91,7 +131,7 @@ async def _process_analyze_async(note_id: str) -> None:
         note.status = NoteStatus.ANALYZED
         await db.commit()
         
-        # Trigger follow-up services (Reflection, etc.)
+        # Trigger reflection
         from workers.reflection_tasks import reflection_incremental
         reflection_incremental.delay(note.user_id)
 

@@ -55,8 +55,10 @@ async def test_get_notes(client, db_session, test_user):
     response = await client.get("/notes")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) >= 1
-    assert any(n["title"] == "Existing Note" for n in data)
+    assert "items" in data
+    assert "count" in data
+    assert len(data["items"]) >= 1
+    assert any(n["title"] == "Existing Note" for n in data["items"])
 
 @pytest.mark.asyncio
 async def test_ask_ai(client, db_session, test_user, mock_ai_service):

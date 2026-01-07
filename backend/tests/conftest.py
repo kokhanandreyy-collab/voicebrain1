@@ -107,7 +107,7 @@ def mock_db_session_factory(monkeypatch, db_session):
     monkeypatch.setattr("infrastructure.database.AsyncSessionLocal", get_mock_session)
     monkeypatch.setattr("workers.reflection_tasks.AsyncSessionLocal", get_mock_session)
     monkeypatch.setattr("workers.maintenance_tasks.AsyncSessionLocal", get_mock_session)
-    monkeypatch.setattr("app.services.pipeline.AsyncSessionLocal", get_mock_session)
+    monkeypatch.setattr("app.services.pipeline.orchestrator.AsyncSessionLocal", get_mock_session)
     
     return get_mock_session
 

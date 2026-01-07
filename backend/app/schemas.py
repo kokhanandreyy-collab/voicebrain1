@@ -144,3 +144,7 @@ class RelatedNote(BaseModel):
 
 class ReplyRequest(BaseModel):
     answer: str
+
+class NotesListResponse(BaseModel):
+    items: List[NoteResponse]
+    count: int

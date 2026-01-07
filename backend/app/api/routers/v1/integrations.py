@@ -185,7 +185,7 @@ INTEGRATION_CONFIG = {
 }
 
 @router.get("/{provider}/auth-url", summary="Get OAuth URL", description="Generates a provider-specific OAuth2 authorization URL for the user to visit.")
-async def get_auth_url(
+async def get_auth_url(provider: str):
     """
     Returns the real OAuth2 URL for the given provider.
     """
@@ -377,7 +377,7 @@ class KaitenAuth(BaseModel):
     api_key: str
 
 @router.post("/kaiten/boards", summary="Fetch Kaiten Boards", description="Utility to list available boards for a connected Kaiten account using an API key.")
-async def fetch_kaiten_boards(
+async def fetch_kaiten_boards(auth: KaitenAuth):
     """
     Fetch available boards from Kaiten.
     """

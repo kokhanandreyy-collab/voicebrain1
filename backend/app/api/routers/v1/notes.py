@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, update
+from sqlalchemy import or_, update, func
 from typing import List
 
 from infrastructure.database import get_db
 from app.models import User, Note, TIER_LIMITS, Integration, IntegrationLog
-from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote, ReplyRequest, NoteCreate
+from app.schemas import NoteResponse, NoteUpdate, AskRequest, AskResponse, RelatedNote, ReplyRequest, NoteCreate, NotesListResponse
 from pydantic import BaseModel
 from app.services.ai_service import ai_service
 from app.api.dependencies import get_current_user
@@ -251,15 +251,16 @@ async def attach_integration_status(db: AsyncSession, notes: List[Note]):
     for note in notes:
         note.integration_status = status_map.get(note.id, [])
 
-@router.get("", response_model=List[NoteResponse], summary="List Notes", description="Retrieve all notes for the current user. Supports semantic search via the 'q' parameter.")
+@router.get("", response_model=NotesListResponse, summary="List Notes", description="Retrieve all notes for the current user. Supports semantic search via the 'q' parameter.")
 async def get_notes(
-    skip: int = 0, 
+    offset: int = 0, 
     limit: int = 100, 
     q: Optional[str] = None,
     current_user: User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
     query = select(Note).where(Note.user_id == current_user.id)
+    count_query = select(func.count(Note.id)).where(Note.user_id == current_user.id)
     
     if q:
         # Semantic Search (RAG)
@@ -267,10 +268,13 @@ async def get_notes(
         # Order by cosine distance (nearest neighbors first)
         query = query.order_by(Note.embedding.cosine_distance(query_embedding))
     
-    notes_res = await db.execute(query.limit(limit).offset(skip))
+    count_res = await db.execute(count_query)
+    total_count = count_res.scalar() or 0
+    
+    notes_res = await db.execute(query.limit(limit).offset(offset))
     notes = notes_res.scalars().all()
     await attach_integration_status(db, notes)
-    return notes
+    return {"items": notes, "count": total_count}
 
 @router.post("/ask", response_model=AskResponse, dependencies=[Depends(RateLimiter(times=20, seconds=3600))], summary="Ask AI", description="Ask a question about your notes. Uses RAG to find relevant context and provide a personalized answer.")
 async def ask_ai(

@@ -11,27 +11,33 @@ class CacheHandler:
         self.redis = redis_client
         self.ttl = 604800  # 7 days
 
-    def _generate_key(self, prefix: str, data: str) -> str:
-        """Generates a stable cache key based on data hash."""
+    def _generate_key(self, prefix: str, data: str, scope: str = "general") -> str:
+        """Generates a stable cache key based on data hash and scope."""
         data_hash = hashlib.sha256(data.encode()).hexdigest()
-        return f"cache:ai:{prefix}:{data_hash}"
+        return f"cache:ai:{prefix}:{scope}:{data_hash}"
 
-    async def get_analysis(self, text: str) -> Optional[Dict[str, Any]]:
+    async def get_analysis(self, text: str, scope: str = "general") -> Optional[Dict[str, Any]]:
         """Retrieves cached analysis result if exists."""
         if not self.redis: return None
         try:
-            key = self._generate_key("analysis", text)
+            key = self._generate_key("analysis", text, scope)
             data = await self.redis.get(key)
-            return json.loads(data) if data else None
+            if data:
+                logger.info(f"Cache Hit ({scope})")
+                return json.loads(data)
+            return None
         except Exception as e:
             logger.warning(f"Cache retrieval failed: {e}")
             return None
 
-    async def save_analysis(self, text: str, result: Dict[str, Any]):
+    async def save_analysis(self, text: str, result: Dict[str, Any], scope: str = "general"):
         """Saves analysis result to cache."""
         if not self.redis: return
         try:
-            key = self._generate_key("analysis", text)
+            # Inject scope metadata for transparency transparency
+            result["_cache_scope"] = scope
+            
+            key = self._generate_key("analysis", text, scope)
             await self.redis.setex(key, self.ttl, json.dumps(result))
         except Exception as e:
             logger.warning(f"Cache save failed: {e}")

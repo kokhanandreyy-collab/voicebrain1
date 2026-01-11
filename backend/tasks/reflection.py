@@ -64,6 +64,16 @@ async def _process_reflection_async(user_id: str):
         all_notes = result.scalars().all()
         if not all_notes: return
 
+        # OPTIMIZATION: "Transparent Cache"
+        # Filter out notes that were generated via "analysis_only" cache 
+        # so they don't pollute the user's reflection memory.
+        all_notes = [
+            n for n in all_notes 
+            if not (n.ai_analysis and isinstance(n.ai_analysis, dict) and n.ai_analysis.get("_cache_scope") == "analysis_only")
+        ]
+        
+        if not all_notes: return
+
         # Pre-calculate stats for composite score
         note_count = len(all_notes)
         has_actions = any(len(n.action_items or []) > 0 for n in all_notes)

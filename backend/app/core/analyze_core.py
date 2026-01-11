@@ -133,7 +133,7 @@ class AnalyzeCore:
             new_mood = analysis.get("mood", "Neutral")
             hist = list(user.emotion_history or [])
             hist.append({"mood": new_mood, "date": datetime.datetime.now(datetime.timezone.utc).isoformat()})
-            user.emotion_history = hist[-20:]
+            user.emotion_history = hist[-100:] # Cap at 100
             await db.execute(update(User).where(User.id == user.id).values(emotion_history=user.emotion_history))
 
         return analysis, cache_hit

@@ -116,7 +116,7 @@ async def _process_reflection_async(user_id: str):
         # --- STEP 2: PATTERN EXTRACTION ---
         pattern_prompt = (
             "Analyze these notes for recurring patterns, communication style, and apparent emotional state. "
-            "Return JSON: {'stable_identity': '...', 'volatile_preferences': {...}, 'current_emotion': '...'}\n\n"
+            "Return JSON: {'stable_identity': '...', 'volatile_preferences': {...}, 'adaptive_preferences': {'key': 'value'}, 'current_emotion': '...'}\n\n"
             f"Notes:\n{notes_text[:4000]}"
         )
         
@@ -130,6 +130,22 @@ async def _process_reflection_async(user_id: str):
             # 1. Update Volatile Preferences (Always)
             user.volatile_preferences = data2.get("volatile_preferences", {})
             
+            # 1.5 Update Adaptive Preferences (Merge + Cap)
+            new_adaptive = data2.get("adaptive_preferences", {})
+            if new_adaptive:
+                current_adaptive = dict(user.adaptive_preferences or {})
+                current_adaptive.update(new_adaptive)
+                # Cap at 100 keys
+                if len(current_adaptive) > 100:
+                    sorted_keys = list(current_adaptive.keys())
+                    # Attempt to remove oldest if possible? 
+                    # Dicts preserve insertion in Py3.7+. We remove from front (oldest).
+                    to_remove = len(current_adaptive) - 100
+                    for _ in range(to_remove):
+                        if sorted_keys:
+                             del current_adaptive[sorted_keys.pop(0)]
+                user.adaptive_preferences = current_adaptive
+
             # 2. Append Emotion Logic (Append-only)
             emotion = data2.get("current_emotion")
             if emotion:
@@ -139,7 +155,7 @@ async def _process_reflection_async(user_id: str):
                 # Create a local copy to modify (SQLAlchemy Mutable handling quirk sometimes)
                 history = list(user.emotion_history) 
                 history.append({"date": datetime.datetime.now().isoformat(), "emotion": emotion})
-                user.emotion_history = history[-50:] # Keep last 50 to avoid infinite growth
+                user.emotion_history = history[-100:] # Keep last 100 to avoid infinite growth
 
             # 3. Gated Identity Update
             new_identity = data2.get("stable_identity", "")

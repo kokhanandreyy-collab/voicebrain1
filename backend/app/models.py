@@ -167,9 +167,14 @@ class Note(Base):
 class NoteEmbedding(Base):
     __tablename__ = "note_embeddings"
     
-    note_id = Column(String, ForeignKey("notes.id"), primary_key=True)
+    note_id = Column(String, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     from pgvector.sqlalchemy import VECTOR
-    embedding = Column(VECTOR(1536)) 
+    embedding = Column(VECTOR(1536))
+    
+    __table_args__ = (
+        {"postgresql_partition_by": "HASH (user_id)"}
+    )
     
     note = relationship("Note", back_populates="embedding_data")
 
@@ -301,7 +306,11 @@ class LongTermMemory(Base):
     __tablename__ = "long_term_memories"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    
+    __table_args__ = (
+        {"postgresql_partition_by": "HASH (user_id)"}
+    )
     
     summary_text = Column(Text, nullable=False)
     importance_score = Column(Float, default=8.0, index=True)

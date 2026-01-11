@@ -35,13 +35,20 @@ class RagService:
         text_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
         try:
             vector = await ai_service.generate_embedding(text_content)
-            # Check existing
-            result = await db.execute(select(NoteEmbedding).where(NoteEmbedding.note_id == note.id))
+            
+            # Check existing - MUST filter by user_id for partition pruning
+            logger.info(f"Using partition for user_id={note.user_id} in embed_note")
+            result = await db.execute(
+                select(NoteEmbedding).where(
+                    NoteEmbedding.note_id == note.id,
+                    NoteEmbedding.user_id == note.user_id
+                )
+            )
             existing = result.scalars().first()
             if existing:
                 existing.embedding = vector
             else:
-                db.add(NoteEmbedding(note_id=note.id, embedding=vector))
+                db.add(NoteEmbedding(note_id=note.id, user_id=note.user_id, embedding=vector))
         except Exception as e:
             logger.error(f"Embedding failed for note {note.id}: {e}")
 
@@ -126,6 +133,7 @@ class RagService:
         """Fetch top long-term memories with temporal weighting."""
         try:
             if query_text:
+                 logger.info(f"Using partition for user_id={user_id} in get_long_term_memory search")
                  query_vec = await ai_service.generate_embedding(query_text)
                  result = await db.execute(
                       select(LongTermMemory)

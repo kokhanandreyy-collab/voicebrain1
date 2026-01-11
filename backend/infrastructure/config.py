@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     
     # RAG
     RAG_TEMPORAL_DECAY_DAYS: int = 30
+    
+    # Importance Scoring Weights
+    IMP_WEIGHT_BASE: float = 0.6
+    IMP_WEIGHT_REFS: float = 0.1
+    IMP_WEIGHT_RECURRENCE: float = 0.1
+    IMP_WEIGHT_ACTIONS: float = 0.1
+    IMP_WEIGHT_TIME: float = 0.1
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod

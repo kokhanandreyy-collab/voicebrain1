@@ -24,10 +24,11 @@ async def test_identity_split_reflection():
     db_mock.execute.side_effect = [user_res, notes_res, MagicMock()] # User, Notes, Relation (empty)
     
     mock_ai = AsyncMock()
-    # Return split identity in JSON
+    # Return responses for 3 steps: Facts, Patterns, Relations
     mock_ai.get_chat_completion.side_effect = [
-        '{"summary": "test", "importance_score": 5, "stable_identity": "Python lover", "volatile_preferences": {"mode": "coding"}}', # Summary + Identity
-        '[]' # Relations
+        '{"facts_summary": "fact", "importance_score": 5.0}', # Step 1: Facts
+        '{"stable_identity": "Python lover", "volatile_preferences": {"mode": "coding"}}', # Step 2: Patterns
+        '[]' # Step 3: Relations
     ]
     mock_ai.clean_json_response.side_effect = lambda x: x
     mock_ai.generate_embedding.return_value = [0.1] * 1536

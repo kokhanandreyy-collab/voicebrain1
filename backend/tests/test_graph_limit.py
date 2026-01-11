@@ -25,8 +25,9 @@ async def test_reflection_graph_importance_limit():
     
     mock_ai = AsyncMock()
     mock_ai.get_chat_completion.side_effect = [
-        '{"summary": "test", "importance_score": 5}', # reflection meta
-        '[]' # relations
+        '{"facts_summary": "fact", "importance_score": 5.0}', # Step 1: Facts
+        '{"stable_identity": "ID", "volatile_preferences": {}}', # Step 2: Patterns
+        '[]' # Step 3: Relations
     ]
     mock_ai.clean_json_response.side_effect = lambda x: x
     mock_ai.generate_embedding.return_value = [0.1] * 1536
@@ -36,8 +37,8 @@ async def test_reflection_graph_importance_limit():
         
         await _process_reflection_async(user_id)
         
-        # Check second AI call (relations)
-        args, kwargs = mock_ai.get_chat_completion.call_args_list[1]
+        # Check third AI call (relations)
+        args, kwargs = mock_ai.get_chat_completion.call_args_list[2]
         prompt_content = args[0][0]["content"] if isinstance(args[0][0], dict) else args[0][1]["content"]
         
         # Should contain n1 but not n2

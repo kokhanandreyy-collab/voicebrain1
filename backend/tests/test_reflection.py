@@ -19,16 +19,35 @@ async def test_reflection_process(mock_db_session):
         for i in range(5)
     ]
     
-    # Mock DB Execute (Fetch Notes)
-    # Mock DB - Sequence of results (Notes then User)
+    # Mock DB Execute Responses
+    # 1. nodes_count
+    mock_metric_1 = MagicMock()
+    mock_metric_1.scalar.return_value = 10
+    
+    # 2. edges_count
+    mock_metric_2 = MagicMock()
+    mock_metric_2.scalar.return_value = 5
+    
+    # 3. Notes Fetch
     mock_notes_result = MagicMock()
     mock_notes_result.scalars().all.return_value = notes
     
+    # 4. Cache Check (Miss)
+    mock_cache_res = MagicMock()
+    mock_cache_res.scalars().first.return_value = None
+    
+    # 5. User Fetch for Identity
     mock_user = User(id=user_id, identity_summary="")
     mock_user_result = MagicMock()
     mock_user_result.scalars().first.return_value = mock_user
     
-    mock_db_session.execute.side_effect = [mock_notes_result, mock_user_result]
+    mock_db_session.execute.side_effect = [
+        mock_metric_1, 
+        mock_metric_2, 
+        mock_notes_result, 
+        mock_cache_res,
+        mock_user_result
+    ]
     
     # Mock AI Service
     with patch("workers.reflection_tasks.ai_service") as mock_ai, \
@@ -37,11 +56,12 @@ async def test_reflection_process(mock_db_session):
          mock_session_cls.return_value.__aenter__.return_value = mock_db_session
          
          # Mock LLM Response
-         json_resp = '{"summary": "Пользователь работал над проектом X, много говорил о Y. В целом продуктивная неделя.", "identity_summary": "Деловой, лаконичный", "importance_score": 9.5}'
+         json_resp = '{"summary": "Пользователь работал.", "identity_summary": "Деловой", "importance_score": 9.5, "confidence": 0.9, "source": "fact"}'
          mock_ai.get_chat_completion = AsyncMock(return_value=json_resp)
          mock_ai.clean_json_response.return_value = json_resp
          # Mock Embedding
          mock_ai.get_embedding = AsyncMock(return_value=[0.1] * 1536)
+         mock_ai.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
          
          await _process_reflection_async(user_id)
          
@@ -51,8 +71,20 @@ async def test_reflection_process(mock_db_session):
          # Verify Save Memory
          assert mock_db_session.add.call_count >= 1
          
+         # Find LongTermMemory in add calls
+         memory_obj = None
+         for call in mock_db_session.add.call_args_list:
+             arg = call[0][0]
+             if isinstance(arg, LongTermMemory):
+                 memory_obj = arg
+                 break
+         
+         assert memory_obj is not None, "LongTermMemory object was not added to session"
+         assert memory_obj.confidence == 0.9
+         assert memory_obj.source == "fact"
+         
          # Verify User Identity Updated
-         assert mock_user.identity_summary == "Деловой, лаконичный"
+         assert mock_user.identity_summary == "Деловой"
 
 @pytest.mark.asyncio
 async def test_reflection_trigger(mock_db_session):

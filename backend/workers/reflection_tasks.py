@@ -81,8 +81,9 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
         prompt = (
             "Обобщи ключевые события, проекты, стиль общения, привычки, изменения пользователя. "
             "Сделай краткий summary (200–400 слов). Оцени важность 0–10 (где 10 = критически важное, меняющее жизнь событие). "
+            "Оцени уверенность (confidence) 0.0–1.0 и укажи источник (source): 'fact' (фактическое событие), 'inferred' (вывод), 'user' (мнение пользователя). "
             "Также определи 'identity_summary': Стиль общения, приоритеты, жаргон, привычки пользователя. Кратко, 100–200 слов. "
-            "Верни JSON: { 'summary': '...', 'identity_summary': '...', 'importance_score': float }."
+            "Верни JSON: { 'summary': '...', 'identity_summary': '...', 'importance_score': float, 'confidence': float, 'source': str }."
             f"\n\nПоследние заметки пользователя:\n{notes_text}"
         )
         
@@ -119,6 +120,8 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
              summary = data.get("summary", "")
              identity = data.get("identity_summary", "")
              score = float(data.get("importance_score", 5.0))
+             confidence = float(data.get("confidence", 1.0))
+             source = data.get("source", "fact")
              
              if not summary:
                  logger.warning("Empty summary from reflection.")
@@ -131,7 +134,9 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
                  user_id=user_id,
                  summary_text=summary,
                  embedding=embedding,
-                 importance_score=score
+                 importance_score=score,
+                 confidence=confidence,
+                 source=source
              )
              db.add(memory)
              
@@ -146,7 +151,7 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
              try:
                  rel_prompt = (
                      "Генерируй связи строго в JSON list: "
-                     "[{'note1_id': str, 'note2_id': str, 'type': 'caused|related|updated|contradicted', 'strength': float 0.5–1.0}]. "
+                     "[{'note1_id': str, 'note2_id': str, 'type': 'caused|related|updated|contradicted', 'strength': float 0.5–1.0, 'confidence': float 0.0-1.0, 'source': 'fact|inferred|user'}]. "
                      "Используй ID заметок (UUID), предоставленные ниже."
                      f"\n\nЗаметки:\n"
                  )
@@ -188,7 +193,9 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
                              note_id1=n1,
                              note_id2=n2,
                              relation_type=r_type,
-                             strength=r_strength
+                             strength=r_strength,
+                             confidence=float(r.get('confidence', 1.0)),
+                             source=r.get('source', 'inferred')
                          ))
                  
                  if new_relations_buffer:

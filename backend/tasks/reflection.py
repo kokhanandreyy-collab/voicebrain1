@@ -99,9 +99,10 @@ async def _process_reflection_async(user_id: str):
             logger.error(f"Reflection Step 1 failed: {e}")
 
         # --- STEP 2: PATTERN EXTRACTION ---
+        # --- STEP 2: PATTERN EXTRACTION ---
         pattern_prompt = (
-            "Analyze these notes for recurring patterns and communication style. "
-            "Return JSON: {'stable_identity': '...', 'volatile_preferences': {...}}\n\n"
+            "Analyze these notes for recurring patterns, communication style, and apparent emotional state. "
+            "Return JSON: {'stable_identity': '...', 'volatile_preferences': {...}, 'current_emotion': '...'}\n\n"
             f"Notes:\n{notes_text[:4000]}"
         )
         
@@ -111,11 +112,51 @@ async def _process_reflection_async(user_id: str):
                 {"role": "user", "content": pattern_prompt}
             ])
             data2 = json.loads(ai_service.clean_json_response(resp2))
+            
+            # 1. Update Volatile Preferences (Always)
             user.volatile_preferences = data2.get("volatile_preferences", {})
             
-            is_sunday = datetime.datetime.now().weekday() == 6
-            if not user.stable_identity or is_sunday:
-                user.stable_identity = data2.get("stable_identity", "")
+            # 2. Append Emotion Logic (Append-only)
+            emotion = data2.get("current_emotion")
+            if emotion:
+                if not user.emotion_history:
+                    user.emotion_history = []
+                # Simple append, maybe limit size in real prod, but per req just append
+                # Create a local copy to modify (SQLAlchemy Mutable handling quirk sometimes)
+                history = list(user.emotion_history) 
+                history.append({"date": datetime.datetime.now().isoformat(), "emotion": emotion})
+                user.emotion_history = history[-50:] # Keep last 50 to avoid infinite growth
+
+            # 3. Gated Identity Update
+            new_identity = data2.get("stable_identity", "")
+            should_update = False
+            
+            if not user.stable_identity:
+                should_update = True
+            elif new_identity:
+                # Calculate similarity
+                new_emb = await ai_service.generate_embedding(new_identity)
+                if user.identity_embedding:
+                    # Cosine Sim
+                    def cosine_sim(v1, v2):
+                         dot = sum(a*b for a, b in zip(v1, v2))
+                         norm1 = math.sqrt(sum(a*a for a in v1))
+                         norm2 = math.sqrt(sum(b*b for b in v2))
+                         return dot / (norm1 * norm2) if norm1 > 0 and norm2 > 0 else 0
+                    
+                    sim = cosine_sim(user.identity_embedding, new_emb)
+                    logger.info(f"Identity Similarity: {sim}")
+                    
+                    if sim < 0.85: # Threshold
+                        should_update = True
+                else:
+                    should_update = True
+                    
+            if should_update and new_identity:
+                user.stable_identity = new_identity
+                user.identity_embedding = await ai_service.generate_embedding(new_identity)
+                logger.info("Stable Identity Updated (Gated)")
+                
         except Exception as e:
             logger.error(f"Reflection Step 2 failed: {e}")
 

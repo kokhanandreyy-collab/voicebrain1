@@ -51,6 +51,10 @@ class User(Base):
     volatile_preferences = Column(JSON, default={}) # Current focus, temporary priorities, current mode
     target_language = Column(String, default='Original')
     adaptive_preferences = Column(JSON, default={}) # Key-value preferences (e.g. "priority_p0": "Critical")
+    
+    from pgvector.sqlalchemy import VECTOR
+    identity_embedding = Column(VECTOR(1536)) # For gated updates (cosine similarity check)
+    emotion_history = Column(JSON, default=[]) # Append-only log of detected emotions
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

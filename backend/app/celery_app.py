@@ -16,7 +16,8 @@ celery = Celery(
         "workers.reflection_tasks",
         "tasks.cleanup_memory",
         "tasks.cleanup_cache",
-        "tasks.proactive"
+        "tasks.proactive",
+        "tasks.reflection"
     ]
 )
 

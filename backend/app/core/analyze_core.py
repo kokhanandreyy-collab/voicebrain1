@@ -1,197 +1,99 @@
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from sqlalchemy.future import select
-from sqlalchemy import desc
+from sqlalchemy import desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
+import datetime
+import json
+import hashlib
 
+from app.models import Note, User, CachedAnalysis, CachedIntent
 from app.services.ai_service import ai_service
-from app.models import Note, User, NoteEmbedding, LongTermMemory, NoteRelation
-from app.core.types import AIAnalysisPack
-from infrastructure.metrics import track_cache_hit, track_cache_miss
+from .rag_service import rag_service
 
-class RagService:
-    """
-    Manages the Retrieval-Augmented Generation (RAG) context construction.
-
-    Implements a hierarchical memory lookup:
-    1. Short-Term: Recent actions from Redis.
-    2. Medium-Term: Vector Similarity (pgvector) + Note Graph (1-hop relations).
-    3. Long-Term: Summarized high-importance memories from the `long_term_memory` table.
-    """
-    async def embed_note(self, note: Note, db: AsyncSession) -> None:
-        """Generates embedding for the note and saves it."""
-        text_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
-        try:
-            vector = await ai_service.generate_embedding(text_content)
-            result = await db.execute(select(NoteEmbedding).where(NoteEmbedding.note_id == note.id))
-            existing = result.scalars().first()
-            if existing:
-                existing.embedding = vector
-            else:
-                db.add(NoteEmbedding(note_id=note.id, embedding=vector))
-        except Exception as e:
-            logger.error(f"Embedding failed for note {note.id}: {e}")
-
-    async def get_medium_term_context(self, user_id: str, note_id: str, text: str, db: AsyncSession) -> str:
-        """Fetch top similar notes via Vector Search + Graph Relations (Medium-Term Memory)."""
-        try:
-            # 1. Vector Search
-            query_vector = await ai_service.generate_embedding(text)
-            vector_res = await db.execute(
-                select(Note)
-                .join(NoteEmbedding)
-                .where(Note.user_id == user_id, Note.id != note_id)
-                .order_by(desc(Note.importance_score), desc(Note.created_at), NoteEmbedding.embedding.cosine_distance(query_vector))
-                .limit(5)
-            )
-            vector_notes = list(vector_res.scalars().all())
-
-            # 2. Graph Traversal (1-hop)
-            related_ids = set([n.id for n in vector_notes])
-            if related_ids:
-                graph_res = await db.execute(
-                    select(NoteRelation)
-                    .where(
-                        (NoteRelation.source_note_id.in_(related_ids)) | 
-                        (NoteRelation.target_note_id.in_(related_ids))
-                    )
-                )
-                relations = graph_res.scalars().all()
-                for r in relations:
-                    target = r.target_note_id if r.source_note_id in related_ids else r.source_note_id
-                    related_ids.add(target)
-            
-            # Fetch content for extended graph
-            final_ids = list(related_ids)[:10]
-            if not final_ids:
-                final_notes = []
-            else:
-                nb_res = await db.execute(select(Note).where(Note.id.in_(final_ids)))
-                final_notes = nb_res.scalars().all()
-            
-            context_parts = []
-            for n in final_notes:
-                summary_part = n.summary[:200] if n.summary else "No summary"
-                context_parts.append(f"Note: {n.title} (Related)\nSummary: {summary_part}")
-            
-            return "\n".join(context_parts) if context_parts else "No recent related context found."
-        except Exception as e:
-            logger.error(f"Medium-Term retrieval failed: {e}")
-            return ""
-
-    async def get_long_term_memory(self, user_id: str, db: AsyncSession) -> str:
-        """Fetch top 3 high-importance long-term summaries."""
-        try:
-            result = await db.execute(
-                select(LongTermMemory)
-                .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
-                .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
-                .limit(3)
-            )
-            summaries = list(result.scalars().all())
-            parts = [f"- {s.summary_text}" for s in summaries]
-            return "\n".join(parts) if parts else "No long-term knowledge recorded yet."
-        except Exception as e:
-            logger.error(f"Long-Term retrieval failed: {e}")
-            return ""
-
-    async def build_hierarchical_context(self, note: Note, db: AsyncSession, memory_service: Any) -> str:
-        st_history = await memory_service.get_history(note.user_id)
-        short_term_str = "\n".join([f"- {item.get('text', str(item))}" for item in st_history]) if st_history else "No recent history."
-        medium_term_str = await self.get_medium_term_context(note.user_id, note.id, note.transcription_text, db)
-        long_term_str = await self.get_long_term_memory(note.user_id, db)
-        return (
-            f"Short-term (Last actions):\n{short_term_str}\n\n"
-            f"Recent context (Related notes):\n{medium_term_str}\n\n"
-            f"Long-term knowledge (General themes):\n{long_term_str}"
-        )
-
-rag_service = RagService()
+# Mock tracking
+def track_cache_hit(name): logger.debug(f"Cache Hit: {name}")
+def track_cache_miss(name): logger.debug(f"Cache Miss: {name}")
 
 class AnalyzeCore:
-    """
-    Core Intelligence Engine for VoiceBrain.
-    """
-    async def analyze_note_by_id(self, note_id: str, db: AsyncSession, memory_service: Any) -> Dict[str, Any]:
-        """
-        Complete analysis orchestration from a note ID.
-        Fetches note/user, checks cache, runs AI, and updates state.
-        Used primarily by background workers and pipeline.
-        """
-        # 1. Fetch State
-        res_note = await db.execute(select(Note).where(Note.id == note_id))
-        note = res_note.scalars().first()
-        if not note or not note.transcription_text:
-            return {}
-
-        res_user = await db.execute(select(User).where(User.id == note.user_id))
-        user = res_user.scalars().first()
-
-        # 2. Execute Analysis Logic
-        analysis, _ = await self.analyze_step(note, user, db, memory_service)
+    async def _check_intent_cache(self, text: str, user_id: str, db: AsyncSession) -> Optional[Dict[str, Any]]:
+        """Checks if a simple command has a cached action result."""
+        # 1. Classification (Simple regex for example)
+        intent = None
+        params = {}
+        if text.lower().startswith("запиши задачу:"):
+            intent = "create_task"
+            params = {"text": text[14:].strip()}
+        elif text.lower().startswith("добавь встречу:"):
+            intent = "add_event"
+            params = {"text": text[15:].strip()}
+            
+        if not intent: return None
         
-        # 3. Finalize
-        note.status = "analyzed"
-        await db.commit()
+        # 2. Key: hash(intent + params)
+        key_raw = f"{intent}:{json.dumps(params, sort_keys=True)}"
+        intent_key = hashlib.sha256(key_raw.encode()).hexdigest()
         
-        return analysis
+        # 3. Lookup
+        res = await db.execute(
+            select(CachedIntent).where(
+                CachedIntent.user_id == user_id,
+                CachedIntent.intent_key == intent_key,
+                CachedIntent.expires_at > datetime.datetime.now(datetime.timezone.utc)
+            )
+        )
+        entry = res.scalars().first()
+        if entry:
+            logger.info(f"Intent Cache Hit: {intent_key}")
+            return entry.action_json
+        return None
+
+    async def _save_intent_cache(self, text: str, user_id: str, analysis: Dict[str, Any], db: AsyncSession):
+        """Saves simple intent results to cache (TTL 7 days)."""
+        intent = analysis.get("intent")
+        if intent not in ["create_task", "add_event"]: return
+        
+        params = {"text": text.split(":")[-1].strip() if ":" in text else text}
+        key_raw = f"{intent}:{json.dumps(params, sort_keys=True)}"
+        intent_key = hashlib.sha256(key_raw.encode()).hexdigest()
+        
+        ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
+        new_cache = CachedIntent(
+            id=str(datetime.datetime.now().timestamp()), # dummy ID if needed
+            user_id=user_id,
+            intent_key=intent_key,
+            action_json=analysis,
+            expires_at=ttl
+        )
+        db.add(new_cache)
 
     async def analyze_step(self, note: Note, user: Optional[User], db: AsyncSession, memory_service: Any) -> tuple[Dict[str, Any], bool]:
-        """
-        Orchestrates the analysis: RAG Context -> AI Analysis -> Save
-        """
-        # 1. Context
+        """Orchestrates RAG context, multiple cache levels, and DeepSeek analysis."""
         user_bio = (user.bio or "") if user else ""
         
-        # Inject Stable Identity (Always)
+        # 1. Identity & Style Context
         if user and user.stable_identity:
-            user_bio = f"{user_bio}\n\nUser Stable Identity (Core Traits & Style): {user.stable_identity}".strip()
+            user_bio = f"{user_bio}\n\nStable Identity: {user.stable_identity}".strip()
 
-        # Inject Volatile Preferences (Focus/Mood)
         if user and user.volatile_preferences:
-            import json
             v_prefs = json.dumps(user.volatile_preferences, indent=2)
-            user_bio += f"\n\nUser Current Focus/Preferences (Volatile): {v_prefs}\nInstruction: Use volatile preferences only if they are relevant to the current note's intent (e.g. tasks, projects)."
+            user_bio += f"\n\nVolatile focus: {v_prefs} (Use if relevant to intent)."
 
-        # Inject Adaptive Preferences
-        if user and user.adaptive_preferences:
-            import json
-            prefs_str = json.dumps(user.adaptive_preferences, indent=2)
-            user_bio += f"\n\nAdaptive preferences (Dynamic Rules): {prefs_str}"
-
-        # Adaptive Learning Instruction
-        user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."
-            
-        target_lang = user.target_language if user else "Original"
-
-        # Inject Emotion History (Task 1 & 3)
-        if user and user.emotion_history:
-            recent = user.emotion_history[-5:]
-            emo_str = ", ".join([f"{e.get('mood')} ({e.get('date', 'anytime')})" for e in recent])
-            user_bio += f"\n\nRecent Mood History: {emo_str}"
-            last_mood = recent[-1].get('mood', 'neutral')
-            user_bio += f"\nUser current mood: {last_mood}"
-            user_bio += f"\nInstruction: Be empathetic to the user's current mood."
-        
+        # 2. Memory Context (RAG)
         hierarchical_context = await rag_service.build_hierarchical_context(note, db, memory_service)
         
-        # Log Context Size for Monitoring
-        logger.info(f"RAG Context Tokens (Est): {int(len(hierarchical_context)/4)} chars: {len(hierarchical_context)}")
-        
-        # 1.5 Semantic Cache Check (Task 3)
-        from app.models import CachedAnalysis
-        import datetime
-        
         cache_hit = False
-        cached_result = None
-        current_embedding = None
+        analysis = None
         
-        try:
-            # Generate embedding for cache key
+        # 3. Intent Cache (Fastest)
+        intent_cached = await self._check_intent_cache(note.transcription_text, note.user_id, db)
+        if intent_cached:
+            analysis = intent_cached
+            cache_hit = True
+        
+        # 4. Semantic Cache (Contextual)
+        if not cache_hit:
             current_embedding = await ai_service.generate_embedding(note.transcription_text)
-            
-            # Search cache
-            # Cosine similarity > 0.9 approximately equals cosine distance < 0.1
             cache_res = await db.execute(
                 select(CachedAnalysis)
                 .where(
@@ -203,138 +105,51 @@ class AnalyzeCore:
                 .limit(1)
             )
             cached_entry = cache_res.scalars().first()
-            
             if cached_entry:
-                logger.info(f"Cache hit for note {note.id}")
-                track_cache_hit("note_analysis")
-                cached_result = cached_entry.result
+                analysis = cached_entry.result
                 cache_hit = True
-            else:
-                logger.info(f"Cache miss for note {note.id}")
-                track_cache_miss("note_analysis")
-                
-        except Exception as e:
-            logger.warning(f"[Cache] Lookup failed: {e}")
+                track_cache_hit("semantic")
 
-        if cache_hit and cached_result:
-            # Skip AI call
-            analysis = cached_result
-        else:
-            # 2. AI Analysis
+        # 5. DeepSeek Call (Fallback)
+        if not cache_hit:
+            target_lang = user.target_language if user else "Original"
             analysis = await ai_service.analyze_text(
                 note.transcription_text,
                 user_context=user_bio,
                 target_language=target_lang,
                 previous_context=hierarchical_context
             )
+            # Save levels
+            await self._save_intent_cache(note.transcription_text, note.user_id, analysis, db)
             
-            # Save to Cache
-            try:
-                if current_embedding:
-                    ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
-                    new_cache = CachedAnalysis(
-                        user_id=note.user_id,
-                        embedding=current_embedding,
-                        result=analysis,
-                        expires_at=ttl
-                    )
-                    db.add(new_cache)
-                    # We don't commit here immediately, usually the caller commits or we rely on session lifecycle.
-                    # But analyze_step usually doesn't commit? Wait, pipeline commits.
-                    # So adding to session is enough.
-            except Exception as e:
-                logger.warning(f"[Cache] Save failed: {e}")
-        
-        # 3. Apply results
-        self._apply_analysis_to_note(note, analysis)
+            emb = await ai_service.generate_embedding(note.transcription_text)
+            ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
+            db.add(CachedAnalysis(user_id=note.user_id, embedding=emb, result=analysis, expires_at=ttl))
+            track_cache_miss("all")
 
-        # 3.0 Emotional Memory Update (Task 3)
+        # 6. Apply & Finalize
+        self._apply_analysis_to_note(note, analysis)
+        
+        # Emotional snapshot
         if user:
             new_mood = analysis.get("mood", "Neutral")
-            history = list(user.emotion_history or [])
-            history.append({
-                "mood": new_mood,
-                "date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "note_id": note.id
-            })
-            # Limit to last 20 entries
-            user.emotion_history = history[-20:]
-            from sqlalchemy import update
+            hist = list(user.emotion_history or [])
+            hist.append({"mood": new_mood, "date": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+            user.emotion_history = hist[-20:]
             await db.execute(update(User).where(User.id == user.id).values(emotion_history=user.emotion_history))
-        
-        # 3.1 Adaptive Learning: Process Identity Update
-        identity_update = analysis.get("identity_update")
-        if identity_update and user:
-            logger.info(f"Adaptive Learning: Updating identity for user {user.id}")
-            current_id = user.identity_summary or ""
-            user.identity_summary = (current_id + f"\n- {identity_update}").strip()
-            
-        # 3.2 Adaptive Learning: Process Structured Preference Update
-        adaptive_update = analysis.get("adaptive_update")
-        if adaptive_update and isinstance(adaptive_update, dict) and user:
-            logger.info(f"Adaptive Learning: Updating preferences for user {user.id}")
-            current_prefs = dict(user.adaptive_preferences or {})
-            current_prefs.update(adaptive_update)
-            user.adaptive_preferences = current_prefs
-            # Force update for JSON/SQLAlchemy
-            from sqlalchemy import update
-            await db.execute(update(User).where(User.id == user.id).values(adaptive_preferences=current_prefs))
-            
-        # 3.3 Clarifying Question Handling
-        # If 'ask_clarification' exists, we put it in action_items so the user sees it immediately
-        # Requirement: If DeepSeek response contains "not sure", "clarify", "don't know" in summary, we promote it
-        ask_clarification = analysis.get("ask_clarification")
-        
-        # Phrase detection as requested
-        summary_lower = str(analysis.get("summary", "")).lower()
-        phrases = ["not sure", "не уверен", "уточни", "не знаю", "don't know", "clarify"]
-        if not ask_clarification:
-            for phrase in phrases:
-                if phrase in summary_lower:
-                    # Try to extract the sentence or just mark it
-                    ask_clarification = "AI is unsure about some details. Please clarify."
-                    break
 
-        if ask_clarification:
-            # Prepend to action items with distinct marker
-            if not note.action_items: note.action_items = []
-            note.action_items = [f"Clarification Needed: {ask_clarification}"] + list(note.action_items)
-            # Ensure it is saved back
-            note.action_items = list(note.action_items)
-            # Record it in analysis dict too for frontend
-            analysis["ask_clarification"] = ask_clarification
-        
-        # 4. Embed
-        await rag_service.embed_note(note, db)
-        
-        # 5. Short Term Memory
-        await memory_service.add_action(note.user_id, {
-            "type": "note_analyzed",
-            "title": analysis.get("title"),
-            "text": f"Analyzed: {analysis.get('title')}"
-        })
-        
         return analysis, cache_hit
 
     def _apply_analysis_to_note(self, note: Note, analysis: Dict[str, Any]):
-        note.title = analysis.get("title", "Untitled Note")
+        note.title = analysis.get("title", "Untitled")
         note.summary = analysis.get("summary")
         note.action_items = analysis.get("action_items", [])
-        note.calendar_events = analysis.get("calendar_events", [])
         note.tags = analysis.get("tags", [])
-        note.diarization = analysis.get("diarization", [])
         note.mood = analysis.get("mood", "Neutral")
-        note.health_data = analysis.get("health_data")
-        
-        note.ai_analysis = AIAnalysisPack(
-            intent=analysis.get("intent", "note"),
-            suggested_project=analysis.get("suggested_project", "Inbox"),
-            entities=analysis.get("entities", []),
-            priority=analysis.get("priority", 4),
-            notion_properties=analysis.get("notion_properties", {}),
-            empathetic_comment=analysis.get("empathetic_comment"),
-            explicit_destination_app=analysis.get("explicit_destination_app"),
-            explicit_folder=analysis.get("explicit_folder")
-        )
+        # Handle clarification promotion
+        ask = analysis.get("ask_clarification")
+        if ask:
+            if not note.action_items: note.action_items = []
+            note.action_items.insert(0, f"Clarification Needed: {ask}")
 
 analyze_core = AnalyzeCore()

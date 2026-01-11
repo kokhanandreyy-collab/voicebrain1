@@ -178,6 +178,7 @@ async def _process_reflection_async(user_id: str):
                     logger.info(f"Identity Similarity: {sim}")
                     
                     if sim < 0.85: # Threshold
+                        logger.warning(f"Identity Drift Alert: Similarity {sim:.3f} < 0.85 for user {user.id}")
                         should_update = True
                 else:
                     should_update = True

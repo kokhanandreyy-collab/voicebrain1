@@ -65,7 +65,7 @@ async def _trigger_proactive_reminders_async():
                 prompt = (
                     "You are a 'Proactive Memory' agent. Review these notes from the user's life exactly 7 days ago.\n"
                     "Generate a short, friendly, and helpful follow-up question (max 20 words).\n"
-                    "Example: 'На прошлой неделе ты планировал X, как продвигается?' or 'Ты беспокоился о Y, стало ли лучше?'\n"
+                    "Example: 'На прошлой неделе ты планировал X, как продвигается?'\n"
                     "Language: Russian.\n\n"
                     f"Context:\n" + "\n".join(context_parts)
                 )

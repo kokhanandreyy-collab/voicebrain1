@@ -81,9 +81,12 @@ async def _process_reflection_async(user_id: str):
         # --- STEP 1: FACT CONDENSATION ---
         facts = ""
         base_score = 5.0
+        confidence = 1.0
+        source = "fact"
+        
         fact_prompt = (
             "Extract only factual events, data points, and specific actions from these notes. "
-            "Return JSON: {'facts_summary': str, 'importance_score': float}\n\n"
+            "Return JSON: {'facts_summary': str, 'importance_score': float, 'confidence': float (0-1), 'source': str ('fact'/'inferred')}\n\n"
             f"Notes:\n{notes_text[:4000]}"
         )
         
@@ -95,10 +98,11 @@ async def _process_reflection_async(user_id: str):
             data1 = json.loads(ai_service.clean_json_response(resp1))
             facts = data1.get("facts_summary")
             base_score = float(data1.get("importance_score", 5.0))
+            confidence = float(data1.get("confidence", 1.0))
+            source = data1.get("source", "fact")
         except Exception as e:
             logger.error(f"Reflection Step 1 failed: {e}")
 
-        # --- STEP 2: PATTERN EXTRACTION ---
         # --- STEP 2: PATTERN EXTRACTION ---
         pattern_prompt = (
             "Analyze these notes for recurring patterns, communication style, and apparent emotional state. "
@@ -167,7 +171,7 @@ async def _process_reflection_async(user_id: str):
             hi_notes_data = [{"id": n.id, "text": n.transcription_text[:500]} for n in high_importance_notes]
             rel_prompt = (
                 "Link these high-importance notes into a narrative thread. "
-                "Return JSON list: [{'note1_id': str, 'note2_id': str, 'relation_type': '...', 'strength': float}]\n"
+                "Return JSON list: [{'note1_id': str, 'note2_id': str, 'relation_type': '...', 'strength': float, 'confidence': float, 'source': str}]\n"
                 f"Notes:\n{json.dumps(hi_notes_data, ensure_ascii=False)}"
             )
             
@@ -182,7 +186,9 @@ async def _process_reflection_async(user_id: str):
                         note_id1=r.get("note1_id"),
                         note_id2=r.get("note2_id"),
                         relation_type=r.get("relation_type", "related"),
-                        strength=float(r.get("strength", 1.0))
+                        strength=float(r.get("strength", 1.0)),
+                        confidence=float(r.get("confidence", 1.0)),
+                        source=r.get("source", "inferred")
                     ))
                     new_rels_count += 1
             except Exception as e:
@@ -203,7 +209,9 @@ async def _process_reflection_async(user_id: str):
                 user_id=user_id,
                 summary_text=facts,
                 embedding=emb,
-                importance_score=comp_score
+                importance_score=comp_score,
+                confidence=confidence,
+                source=source
             )
             db.add(memory)
             logger.info(f"Composite Reflection saved for {user_id}. Base: {base_score}, Final: {comp_score}")

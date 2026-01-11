@@ -78,7 +78,8 @@ class RagService:
                     select(NoteRelation)
                     .where(
                         (NoteRelation.note_id1.in_(vector_ids)) | 
-                        (NoteRelation.note_id2.in_(vector_ids))
+                        (NoteRelation.note_id2.in_(vector_ids)),
+                        NoteRelation.confidence > 0.6
                     )
                     .order_by(desc(NoteRelation.strength))
                 )
@@ -128,7 +129,7 @@ class RagService:
                  query_vec = await ai_service.generate_embedding(query_text)
                  result = await db.execute(
                       select(LongTermMemory)
-                      .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
+                      .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False, LongTermMemory.confidence > 0.6)
                       .order_by(LongTermMemory.embedding.cosine_distance(query_vec))
                       .limit(50)
                  )
@@ -136,7 +137,7 @@ class RagService:
             else:
                    result = await db.execute(
                        select(LongTermMemory)
-                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
+                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False, LongTermMemory.confidence > 0.6)
                        .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
                        .limit(20)
                    )

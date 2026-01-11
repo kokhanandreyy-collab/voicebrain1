@@ -99,6 +99,8 @@ class NoteRelation(Base):
     note_id2 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"))
     relation_type = Column(String)  # "caused", "related", "updated"
     strength = Column(Float, default=1.0)
+    confidence = Column(Float, default=1.0)
+    source = Column(String, default="inferred") # "fact", "inferred", "user"
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class NoteStatus:
@@ -306,6 +308,8 @@ class LongTermMemory(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_archived = Column(Boolean, default=False, index=True) # Soft delete
     archived_summary = Column(Text, nullable=True) # Ultra-summary for compressed memory
+    confidence = Column(Float, default=1.0)
+    source = Column(String, default="fact") # "fact", "inferred", "user"
     
     from pgvector.sqlalchemy import VECTOR
     embedding = Column(VECTOR(1536))

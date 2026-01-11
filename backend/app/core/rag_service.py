@@ -68,6 +68,8 @@ class RagService:
                 known_ids = vector_ids.copy()
                 
                 for r in relations:
+                    if (r.strength or 0) <= 0.5:
+                        continue
                     target = r.note_id2 if r.note_id1 in vector_ids else r.note_id1
                     if target not in known_ids:
                         neighbor_ids.append(target)

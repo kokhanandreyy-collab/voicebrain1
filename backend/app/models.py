@@ -93,7 +93,7 @@ class NoteRelation(Base):
     id = Column(Integer, primary_key=True, index=True)
     note_id1 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"))
     note_id2 = Column(String, ForeignKey("notes.id", ondelete="CASCADE"))
-    relation_type = Column(String)  # "caused", "related", "updated", "contradicted"
+    relation_type = Column(String)  # "caused", "related", "updated"
     strength = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

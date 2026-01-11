@@ -13,7 +13,7 @@ from app.services.ai_service import ai_service
 async def _process_reflection_async(user_id: str):
     """
     1. Summarize last 50 notes.
-    2. Extract graph-like relations (ENA).
+    2. Extract graph-like relations (ENA) for high-importance notes.
     3. Update user identity (Stable vs Volatile).
     """
     logger.info(f"Starting graph-based reflection for user {user_id}")
@@ -31,20 +31,19 @@ async def _process_reflection_async(user_id: str):
             .order_by(desc(Note.created_at))
             .limit(50)
         )
-        notes = result.scalars().all()
-        if not notes:
+        all_notes = result.scalars().all()
+        if not all_notes:
             return
 
-        notes_data = [{"id": n.id, "text": n.transcription_text[:500]} for n in notes]
+        notes_data = [{"id": n.id, "text": n.transcription_text[:500]} for n in all_notes]
         notes_text = "\n".join([f"ID: {n['id']} | Content: {n['text']}" for n in notes_data])
 
         # 2. Summary and Identity Analysis
-        # We ask AI to separate stable traits from volatile focus
         prompt = (
             "Analyze the following notes. Provide:\n"
             "1. Consolidated summary and importance score.\n"
-            "2. STABLE IDENTITY: Long-term traits, communication style, core values, language preferences.\n"
-            "3. VOLATILE PREFERENCES: Current focus, temporary priorities, current life mode (e.g., 'working on project X', 'on vacation').\n"
+            "2. STABLE IDENTITY: Long-term traits, communication style, core values.\n"
+            "3. VOLATILE PREFERENCES: Current focus, temporary priorities.\n"
             "Return JSON: {\n"
             "  'summary': '...',\n"
             "  'importance_score': float,\n"
@@ -61,8 +60,6 @@ async def _process_reflection_async(user_id: str):
         
         try:
             data = json.loads(ai_service.clean_json_response(resp))
-            
-            # Save LongTermMemory
             summary = data.get("summary")
             if summary:
                 emb = await ai_service.generate_embedding(summary)
@@ -74,45 +71,42 @@ async def _process_reflection_async(user_id: str):
                 )
                 db.add(memory)
 
-            # Update Identity
-            # Stable: Update rarely - only if significant change or if it's the weekly run
-            # Volatile: Update always
             user.volatile_preferences = data.get("volatile_preferences", {})
-            
-            # For simplicity in this logic, we update stable identity if it's empty 
-            # or if this is a deeper reflection (weekly logic could be added here)
-            # Reqs say: Stable - weekly, Volatile - frequent.
-            # We check if stable is empty or if it's Sunday
             is_sunday = datetime.datetime.now().weekday() == 6
             if not user.stable_identity or is_sunday:
-                logger.info(f"Updating stable identity for user {user_id}")
                 user.stable_identity = data.get("stable_identity", "")
 
         except Exception as e:
             logger.error(f"Reflection identity update failed: {e}")
 
-        # 3. Graph Extraction (ENA) - existing logic
-        rel_prompt = (
-            "Analyze relationships between these notes.\n"
-            "Return JSON list: [{'note1_id': str, 'note2_id': str, 'relation_type': 'caused|related|updated|contradicted', 'strength': float}]\n"
-            f"\nNotes:\n{json.dumps(notes_data, ensure_ascii=False)}"
-        )
-        
-        try:
-            rel_resp = await ai_service.get_chat_completion([
-                {"role": "system", "content": "Return JSON list."},
-                {"role": "user", "content": rel_prompt}
-            ])
-            relations = json.loads(ai_service.clean_json_response(rel_resp))
-            for r in relations:
-                db.add(NoteRelation(
-                    note_id1=r.get("note1_id"),
-                    note_id2=r.get("note2_id"),
-                    relation_type=r.get("relation_type", "related"),
-                    strength=float(r.get("strength", 1.0))
-                ))
-        except Exception as e:
-            logger.error(f"Graph extraction failed: {e}")
+        # 3. Graph Extraction (ENA) - Filter by importance_score >= 7
+        high_importance_notes = [n for n in all_notes if (n.importance_score or 0) >= 7]
+        if high_importance_notes:
+            hi_notes_data = [{"id": n.id, "text": n.transcription_text[:500]} for n in high_importance_notes]
+            rel_prompt = (
+                "Analyze relationships between these high-importance notes.\n"
+                "Return JSON list: [{'note1_id': str, 'note2_id': str, 'relation_type': 'caused|related|updated', 'strength': float}]\n"
+                f"\nNotes:\n{json.dumps(hi_notes_data, ensure_ascii=False)}"
+            )
+            
+            try:
+                rel_resp = await ai_service.get_chat_completion([
+                    {"role": "system", "content": "Return JSON list."},
+                    {"role": "user", "content": rel_prompt}
+                ])
+                relations = json.loads(ai_service.clean_json_response(rel_resp))
+                new_rels_count = 0
+                for r in relations:
+                    db.add(NoteRelation(
+                        note_id1=r.get("note1_id"),
+                        note_id2=r.get("note2_id"),
+                        relation_type=r.get("relation_type", "related"),
+                        strength=float(r.get("strength", 1.0))
+                    ))
+                    new_rels_count += 1
+                logger.info(f"Graph extraction for user {user_id}: saved {new_rels_count} relations.")
+            except Exception as e:
+                logger.error(f"Graph extraction failed: {e}")
 
         await db.commit()
 

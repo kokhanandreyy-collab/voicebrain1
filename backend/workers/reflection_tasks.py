@@ -310,21 +310,49 @@ def reflection_incremental(user_id: str):
     
     async_to_sync(_process_reflection_async)(user_id, limit=11) # Current + 10 last
 
-@shared_task(name="reflection.trigger_daily")
-def trigger_daily_reflection():
-    async_to_sync(_trigger_reflection_async)()
+@shared_task(name="reflection.trigger_batched")
+def trigger_batched_reflection():
+    async_to_sync(_trigger_batched_async)()
 
-async def _trigger_reflection_async():
-    logger.info("Triggering daily reflection for active users...")
-    seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+async def _trigger_batched_async():
+    logger.info("Triggering batched daily reflection...")
+    seven_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
     
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User).where(User.last_note_date >= seven_days_ago))
+        result = await db.execute(select(User).where(User.last_note_date >= seven_days_ago, User.is_active == True))
         active_users = result.scalars().all()
         
-        for user in active_users:
-            logger.info(f"Queueing reflection for user {user.id}")
-            reflection_daily.delay(user.id)
+        user_ids = [u.id for u in active_users]
+        logger.info(f"Found {len(user_ids)} active users.")
+        
+        # Chunk into 50
+        batch_size = 50
+        chunks = [user_ids[i:i + batch_size] for i in range(0, len(user_ids), batch_size)]
+        
+        for chunk in chunks:
+            logger.info(f"Queueing batch of {len(chunk)} users")
+            batch_reflection.delay(chunk)
+
+@shared_task(name="reflection.batch_reflection")
+def batch_reflection(user_ids: list[str]):
+    """Batched reflection task."""
+    logger.info(f"Processing batch of {len(user_ids)} users")
+    async_to_sync(_process_batch_wrapper)(user_ids)
+
+async def _process_batch_wrapper(user_ids: list[str]):
+    """Process a batch of users concurrently"""
+    import asyncio
+    # Semaphore to limit concurrency within the batch if needed, e.g. 5 concurrent DB/LLM ops
+    sem = asyncio.Semaphore(5)
+    
+    async def bound_reflection(uid):
+        async with sem:
+            try:
+                await _process_reflection_async(uid)
+            except Exception as e:
+                logger.error(f"Error processing user {uid} in batch: {e}")
+
+    await asyncio.gather(*[bound_reflection(uid) for uid in user_ids])
 
 @shared_task(name="memory.self_improve")
 def self_improve_memory(user_id: str):

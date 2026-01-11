@@ -81,34 +81,58 @@ class RagService:
             graph_notes = []
             
             if vector_ids:
+                # Graph Filter: Confidence > 0.6 AND Strength > 0.7 (Requirement)
                 graph_res = await db.execute(
                     select(NoteRelation)
                     .where(
                         (NoteRelation.note_id1.in_(vector_ids)) | 
                         (NoteRelation.note_id2.in_(vector_ids)),
-                        NoteRelation.confidence > 0.6
+                        NoteRelation.confidence > 0.6,
+                        NoteRelation.strength > 0.7
                     )
-                    .order_by(desc(NoteRelation.strength))
                 )
                 relations = graph_res.scalars().all()
                 logger.info(f"Graph traversal: found {len(relations)} connections")
                 
-                neighbor_ids = []
-                known_ids = vector_ids.copy()
-                
+                # We need embeddings for neighbors to calculate weighted score
+                # Map neighbor_id -> max(strength) (if multiple edges to it)
+                neighbor_map = {}
                 for r in relations:
-                    if (r.strength or 0) <= 0.5:
-                        continue
                     target = r.note_id2 if r.note_id1 in vector_ids else r.note_id1
-                    if target not in known_ids:
-                        neighbor_ids.append(target)
-                        known_ids.add(target)
-                        if len(neighbor_ids) >= 5:
-                            break
-                            
-                if neighbor_ids:
-                    nb_notes_res = await db.execute(select(Note).where(Note.id.in_(neighbor_ids)))
-                    graph_notes = list(nb_notes_res.scalars().all())
+                    if target in vector_ids: continue # Don't cycle back to start set
+                    
+                    s = r.strength or 0
+                    if target not in neighbor_map:
+                        neighbor_map[target] = s
+                    else:
+                        neighbor_map[target] = max(neighbor_map[target], s)
+                
+                if neighbor_map:
+                    n_ids = list(neighbor_map.keys())
+                    
+                    # Optimization: Query distance directly
+                    nb_res_dist = await db.execute(
+                        select(Note, NoteEmbedding.embedding.cosine_distance(query_vector))
+                        .join(NoteEmbedding)
+                        .where(Note.id.in_(n_ids))
+                    )
+                    
+                    candidates_scored = []
+                    for row in nb_res_dist.all():
+                        n_obj = row[0]
+                        dist = row[1]
+                        sim = 1.0 - dist
+                        strength = neighbor_map[n_obj.id]
+                        
+                        # Weighted Score: 30% Graph + 70% Cosine
+                        final_score = (0.3 * strength) + (0.7 * sim)
+                        candidates_scored.append((final_score, n_obj))
+                    
+                    # Sort by Final Score
+                    candidates_scored.sort(key=lambda x: x[0], reverse=True)
+                    
+                    # Top K=5
+                    graph_notes = [x[1] for x in candidates_scored[:5]]
             
             # Formatting
             v_parts = []
@@ -119,7 +143,7 @@ class RagService:
             g_parts = []
             for n in graph_notes:
                 summary = n.summary[:200] if n.summary else (n.transcription_text[:200] if n.transcription_text else "No content")
-                g_parts.append(f"Related note: {summary}")
+                g_parts.append(f"Related note: {n.title} - {summary}")
 
             return {
                 "vector": "\n".join(v_parts) if v_parts else "No similar notes found.",

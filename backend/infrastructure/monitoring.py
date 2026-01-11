@@ -10,6 +10,8 @@ analysis_cache_hits = Counter("analysis_cache_hits_total", "Total number of sema
 analysis_cache_misses = Counter("analysis_cache_misses_total", "Total number of semantic cache misses", ["type"])
 
 reflection_hit_rate_gauge = Gauge("analysis_cache_hit_rate", "Current analysis cache hit rate (0.0 - 1.0)")
+db_query_count = Counter("db_queries_total", "Total number of database queries executed")
+reflection_ops_count = Counter("reflection_ops_total", "Total reflection operations triggered")
 
 class MemoryMonitor:
     @staticmethod
@@ -40,5 +42,13 @@ class MemoryMonitor:
             logger.info(f"Daily reflection cache hit rate: {rate:.2%}")
         else:
             logger.info("Daily reflection cache hit rate: N/A (no requests)")
+
+    @staticmethod
+    def track_db_query():
+        db_query_count.inc()
+
+    @staticmethod
+    def track_reflection_start():
+        reflection_ops_count.inc()
 
 monitor = MemoryMonitor()

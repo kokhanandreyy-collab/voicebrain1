@@ -14,6 +14,9 @@ from slowapi.errors import RateLimitExceeded
 from infrastructure.rate_limit import limiter
 from infrastructure.config import settings
 from infrastructure.logging import configure_logging
+from infrastructure.monitoring import monitor
+from infrastructure.database import engine
+from sqlalchemy import event
 
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.auth import AuthMiddleware
@@ -101,6 +104,13 @@ async def universal_exception_handler(request: Request, exc: Exception):
         },
     )
 
+# Track DB queries
+@event.listens_for(engine.sync_engine, "before_cursor_execute")
+def count_db_query(conn, cursor, statement, parameters, context, executemany):
+    monitor.track_db_query()
+
+Instrumentator().instrument(app).expose(app)
+
 @app.on_event("startup")
 async def startup():
     if settings.SENTRY_DSN:
@@ -110,7 +120,6 @@ async def startup():
             environment=settings.ENVIRONMENT
         )
 
-    Instrumentator().instrument(app).expose(app)
     http_client.start()
 
     import redis.asyncio as redis

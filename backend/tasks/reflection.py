@@ -14,10 +14,16 @@ async def _process_reflection_async(user_id: str):
     """
     1. Summarize last 50 notes.
     2. Extract graph-like relations (ENA).
-    3. Save results.
+    3. Update user identity (Stable vs Volatile).
     """
     logger.info(f"Starting graph-based reflection for user {user_id}")
     async with AsyncSessionLocal() as db:
+        # Fetch user
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if not user:
+            return
+
         # 1. Fetch recent notes
         result = await db.execute(
             select(Note)
@@ -32,61 +38,79 @@ async def _process_reflection_async(user_id: str):
         notes_data = [{"id": n.id, "text": n.transcription_text[:500]} for n in notes]
         notes_text = "\n".join([f"ID: {n['id']} | Content: {n['text']}" for n in notes_data])
 
-        # 2. Step A: Summary and Importance
+        # 2. Summary and Identity Analysis
+        # We ask AI to separate stable traits from volatile focus
         prompt = (
-            "Analyze the following notes. Provide a consolidated summary and an importance score (0-10).\n"
-            "Return JSON: {'summary': '...', 'importance_score': float}\n\n"
+            "Analyze the following notes. Provide:\n"
+            "1. Consolidated summary and importance score.\n"
+            "2. STABLE IDENTITY: Long-term traits, communication style, core values, language preferences.\n"
+            "3. VOLATILE PREFERENCES: Current focus, temporary priorities, current life mode (e.g., 'working on project X', 'on vacation').\n"
+            "Return JSON: {\n"
+            "  'summary': '...',\n"
+            "  'importance_score': float,\n"
+            "  'stable_identity': '...',\n"
+            "  'volatile_preferences': {...}\n"
+            "}\n\n"
             f"Notes:\n{notes_text[:4000]}"
         )
         
         resp = await ai_service.get_chat_completion([
-            {"role": "system", "content": "You are a memory analyst. Return JSON."},
+            {"role": "system", "content": "You are a user identity analyst. Return JSON."},
             {"role": "user", "content": prompt}
         ])
         
         try:
             data = json.loads(ai_service.clean_json_response(resp))
-            summary = data.get("summary")
-            score = float(data.get("importance_score", 5.0))
             
             # Save LongTermMemory
+            summary = data.get("summary")
             if summary:
                 emb = await ai_service.generate_embedding(summary)
                 memory = LongTermMemory(
                     user_id=user_id,
                     summary_text=summary,
                     embedding=emb,
-                    importance_score=score
+                    importance_score=float(data.get("importance_score", 5.0))
                 )
                 db.add(memory)
-        except Exception as e:
-            logger.error(f"Reflection summary failed: {e}")
 
-        # 3. Step B: Graph Extraction (ENA)
+            # Update Identity
+            # Stable: Update rarely - only if significant change or if it's the weekly run
+            # Volatile: Update always
+            user.volatile_preferences = data.get("volatile_preferences", {})
+            
+            # For simplicity in this logic, we update stable identity if it's empty 
+            # or if this is a deeper reflection (weekly logic could be added here)
+            # Reqs say: Stable - weekly, Volatile - frequent.
+            # We check if stable is empty or if it's Sunday
+            is_sunday = datetime.datetime.now().weekday() == 6
+            if not user.stable_identity or is_sunday:
+                logger.info(f"Updating stable identity for user {user_id}")
+                user.stable_identity = data.get("stable_identity", "")
+
+        except Exception as e:
+            logger.error(f"Reflection identity update failed: {e}")
+
+        # 3. Graph Extraction (ENA) - existing logic
         rel_prompt = (
-            "Analyze the relationships between these notes based on context, causality, and contradictions.\n"
-            "Return a JSON list of relations: [{'note1_id': str, 'note2_id': str, 'relation_type': 'caused|related|updated|contradicted', 'strength': float (0.1-1.0)}]\n"
-            f"\nNotes list:\n{json.dumps(notes_data, ensure_ascii=False)}"
+            "Analyze relationships between these notes.\n"
+            "Return JSON list: [{'note1_id': str, 'note2_id': str, 'relation_type': 'caused|related|updated|contradicted', 'strength': float}]\n"
+            f"\nNotes:\n{json.dumps(notes_data, ensure_ascii=False)}"
         )
         
-        rel_resp = await ai_service.get_chat_completion([
-            {"role": "system", "content": "You are a graph relationship extractor. Return ONLY a JSON list."},
-            {"role": "user", "content": rel_prompt}
-        ])
-        
         try:
+            rel_resp = await ai_service.get_chat_completion([
+                {"role": "system", "content": "Return JSON list."},
+                {"role": "user", "content": rel_prompt}
+            ])
             relations = json.loads(ai_service.clean_json_response(rel_resp))
-            new_rels = []
             for r in relations:
-                new_rels.append(NoteRelation(
+                db.add(NoteRelation(
                     note_id1=r.get("note1_id"),
                     note_id2=r.get("note2_id"),
                     relation_type=r.get("relation_type", "related"),
                     strength=float(r.get("strength", 1.0))
                 ))
-            if new_rels:
-                db.add_all(new_rels)
-                logger.info(f"Extracted {len(new_rels)} relations for user {user_id}")
         except Exception as e:
             logger.error(f"Graph extraction failed: {e}")
 
@@ -94,5 +118,4 @@ async def _process_reflection_async(user_id: str):
 
 @shared_task(name="reflection_daily")
 def reflection_daily(user_id: str):
-    """Celery task for daily reflection and graph building."""
     async_to_sync(_process_reflection_async)(user_id)

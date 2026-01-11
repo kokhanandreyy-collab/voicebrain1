@@ -143,15 +143,21 @@ class AnalyzeCore:
         # 1. Context
         user_bio = (user.bio or "") if user else ""
         
-        # Inject Identity Core
-        if user and user.identity_summary:
-            user_bio = f"{user_bio}\n\nUser Identity (Core Traits): {user.identity_summary}".strip()
-            
+        # Inject Stable Identity (Always)
+        if user and user.stable_identity:
+            user_bio = f"{user_bio}\n\nUser Stable Identity (Core Traits & Style): {user.stable_identity}".strip()
+
+        # Inject Volatile Preferences (Focus/Mood)
+        if user and user.volatile_preferences:
+            import json
+            v_prefs = json.dumps(user.volatile_preferences, indent=2)
+            user_bio += f"\n\nUser Current Focus/Preferences (Volatile): {v_prefs}\nInstruction: Use volatile preferences only if they are relevant to the current note's intent (e.g. tasks, projects)."
+
         # Inject Adaptive Preferences
         if user and user.adaptive_preferences:
             import json
             prefs_str = json.dumps(user.adaptive_preferences, indent=2)
-            user_bio += f"\n\nAdaptive preferences: {prefs_str}"
+            user_bio += f"\n\nAdaptive preferences (Dynamic Rules): {prefs_str}"
 
         # Adaptive Learning Instruction
         user_bio += "\n\nAdaptive Learning: If you are unsure about the user's priority mapping (e.g. what 'high' means) or context, explicitly output a question in 'ask_clarification' field."

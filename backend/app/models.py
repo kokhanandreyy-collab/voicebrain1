@@ -46,7 +46,9 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     bio = Column(Text, nullable=True) # User context for AI
-    identity_summary = Column(Text, default="") # Auto-generated identity core
+    identity_summary = Column(Text, default="") # Auto-generated identity core (Legacy)
+    stable_identity = Column(Text, default="") # Long-term traits, style, language
+    volatile_preferences = Column(JSON, default={}) # Current focus, temporary priorities, current mode
     target_language = Column(String, default='Original')
     adaptive_preferences = Column(JSON, default={}) # Key-value preferences (e.g. "priority_p0": "Critical")
     is_active = Column(Boolean, default=True)

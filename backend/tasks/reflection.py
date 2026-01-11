@@ -252,3 +252,49 @@ async def _process_reflection_async(user_id: str):
 @shared_task(name="reflection_daily")
 def reflection_daily(user_id: str):
     async_to_sync(_process_reflection_async)(user_id)
+
+async def _process_batch_wrapper(user_ids: list[str]):
+    """Process a batch of users concurrently"""
+    import asyncio
+    # Semaphore to limit concurrency within the batch if needed, e.g. 5
+    sem = asyncio.Semaphore(5)
+    
+    async def bound_reflection(uid):
+        async with sem:
+            try:
+                await _process_reflection_async(uid)
+            except Exception as e:
+                logger.error(f"Error processing user {uid} in batch: {e}")
+
+    await asyncio.gather(*[bound_reflection(uid) for uid in user_ids])
+
+@shared_task(name="reflection.batch_reflection")
+def reflection_batch(user_ids: list[str]):
+    """Batched reflection task."""
+    logger.info(f"Processing batch of {len(user_ids)} users")
+    async_to_sync(_process_batch_wrapper)(user_ids)
+
+async def _trigger_batched_async():
+    logger.info("Triggering batched daily reflection...")
+    seven_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
+    
+    async with AsyncSessionLocal() as db:
+        # Fetch active users (e.g. active in last 7 days)
+        # Note: 'last_note_date' might be naive or tz-aware. Ensure comparison works.
+        result = await db.execute(select(User).where(User.last_note_date >= seven_days_ago, User.is_active == True))
+        active_users = result.scalars().all()
+        
+        user_ids = [u.id for u in active_users]
+        logger.info(f"Found {len(user_ids)} active users.")
+        
+        # Chunk into 50
+        batch_size = 50
+        chunks = [user_ids[i:i + batch_size] for i in range(0, len(user_ids), batch_size)]
+        
+        for chunk in chunks:
+            logger.info(f"Queueing batch of {len(chunk)} users")
+            reflection_batch.delay(chunk)
+
+@shared_task(name="reflection.trigger_batched")
+def trigger_batched_reflection():
+    async_to_sync(_trigger_batched_async)()

@@ -64,7 +64,7 @@ celery.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=0),
     },
     "daily-reflection-trigger": {
-        "task": "reflection.trigger_daily",
+        "task": "reflection.trigger_batched",
         "schedule": crontab(hour=1, minute=0), # Run at 1:00 AM
     },
     "cleanup-memory-weekly": {

@@ -12,6 +12,24 @@ from infrastructure.redis_client import short_term_memory
 from infrastructure.config import settings
 
 class RagService:
+    def _calculate_temporal_score(self, importance: float, created_at: datetime.datetime) -> float:
+        """
+        Calculates a score based on importance and freshness.
+        Score = importance * exp(-days_since_created / decay_constant)
+        """
+        if importance is None:
+            importance = 5.0
+            
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+            
+        days_since = (now - created_at).total_seconds() / (24 * 3600)
+        decay = settings.RAG_TEMPORAL_DECAY_DAYS or 30
+        
+        freshness_factor = math.exp(-days_since / decay)
+        return importance * freshness_factor
+
     async def embed_note(self, note: Note, db: AsyncSession) -> None:
         """Generates embedding for the note and saves it."""
         text_content = f"{note.title} {note.summary} {note.transcription_text} {' '.join(note.tags)}"
@@ -32,20 +50,24 @@ class RagService:
         try:
             from app.models import NoteRelation
             
-            # 1. Vector Search (Prioritize importance_score desc, then created_at desc)
+            # 1. Vector Search + Temporal Weighting
             query_vector = await ai_service.generate_embedding(text)
+            # Fetch more candidates to re-rank by temporal score
             vector_res = await db.execute(
                 select(Note)
                 .join(NoteEmbedding)
                 .where(Note.user_id == user_id, Note.id != note_id)
-                .order_by(
-                    desc(Note.importance_score),
-                    desc(Note.created_at),
-                    NoteEmbedding.embedding.cosine_distance(query_vector)
-                )
-                .limit(5)
+                .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
+                .limit(20)
             )
-            vector_notes = list(vector_res.scalars().all())
+            candidates = list(vector_res.scalars().all())
+            
+            # Re-rank by Temporal Score
+            candidates.sort(
+                key=lambda n: self._calculate_temporal_score(n.importance_score, n.created_at),
+                reverse=True
+            )
+            vector_notes = candidates[:5]
 
             # 2. Graph Traversal (1-hop)
             vector_ids = set([n.id for n in vector_notes])
@@ -64,7 +86,6 @@ class RagService:
                 logger.info(f"Graph traversal: found {len(relations)} connections")
                 
                 neighbor_ids = []
-                # tracked to avoid duplicates with vector_notes
                 known_ids = vector_ids.copy()
                 
                 for r in relations:
@@ -74,7 +95,7 @@ class RagService:
                     if target not in known_ids:
                         neighbor_ids.append(target)
                         known_ids.add(target)
-                        if len(neighbor_ids) >= 5: # top_k=5 by strength desc
+                        if len(neighbor_ids) >= 5:
                             break
                             
                 if neighbor_ids:
@@ -84,12 +105,12 @@ class RagService:
             # Formatting
             v_parts = []
             for n in vector_notes:
-                summary = n.summary[:200] if n.summary else "No summary"
+                summary = n.summary[:200] if n.summary else (n.transcription_text[:200] if n.transcription_text else "No content")
                 v_parts.append(f"Note: {n.title}\nSummary: {summary}")
             
             g_parts = []
             for n in graph_notes:
-                summary = n.summary[:200] if n.summary else "No summary"
+                summary = n.summary[:200] if n.summary else (n.transcription_text[:200] if n.transcription_text else "No content")
                 g_parts.append(f"Related note: {summary}")
 
             return {
@@ -101,11 +122,10 @@ class RagService:
             return {"vector": "", "graph": ""}
 
     async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
-        """Fetch top long-term memories. Prioritize importance_score desc, then created_at desc."""
+        """Fetch top long-term memories with temporal weighting."""
         try:
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
-                 # Hybrid search: broad vector match -> re-rank by importance and recency
                  result = await db.execute(
                       select(LongTermMemory)
                       .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
@@ -113,18 +133,21 @@ class RagService:
                       .limit(50)
                  )
                  candidates = list(result.scalars().all())
-                 # Re-rank by importance and date (strictly in order)
-                 candidates.sort(key=lambda x: (getattr(x, 'importance_score', 5.0) or 5.0, x.created_at), reverse=True)
-                 final = candidates[:5]
             else:
-                   # General summary retrieval: strictly by importance and date
                    result = await db.execute(
                        select(LongTermMemory)
                        .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
                        .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
-                       .limit(5)
+                       .limit(20)
                    )
-                   final = list(result.scalars().all())
+                   candidates = list(result.scalars().all())
+
+            # Re-rank by Temporal Score
+            candidates.sort(
+                key=lambda x: self._calculate_temporal_score(x.importance_score, x.created_at),
+                reverse=True
+            )
+            final = candidates[:5]
 
             parts = [f"- {s.summary_text} (Score: {s.importance_score})" for s in final]
             return "\n".join(parts) if parts else "No long-term knowledge recorded yet."
@@ -143,7 +166,7 @@ class RagService:
                 .limit(10)
             )
             st_notes = st_res.scalars().all()
-            short_term = "\n".join([f"- {n.created_at.strftime('%Y-%m-%d')}: {n.summary[:100]}" for n in st_notes if n.summary])
+            short_term = "\n".join([f"- {n.created_at.strftime('%Y-%m-%d')}: {n.summary[:100] if n.summary else n.transcription_text[:100]}" for n in st_notes])
         except Exception as e:
             logger.error(f"Short-term fetch failed: {e}")
             short_term = ""

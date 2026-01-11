@@ -68,7 +68,7 @@ celery.conf.beat_schedule = {
     },
     "cleanup-memory-weekly": {
         "task": "cleanup_memory",
-        "schedule": crontab(hour=3, minute=0, day_of_week=0),
+        "schedule": crontab(day_of_week="0", hour=3, minute=0), # Every Sunday at 3:00
     },
     "report-cache-stats-daily": {
         "task": "report_cache_stats",

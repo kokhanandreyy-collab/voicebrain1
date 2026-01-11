@@ -32,13 +32,17 @@ class RagService:
         try:
             from app.models import NoteRelation
             
-            # 1. Vector Search
+            # 1. Vector Search (Prioritize importance_score desc, then created_at desc)
             query_vector = await ai_service.generate_embedding(text)
             vector_res = await db.execute(
                 select(Note)
                 .join(NoteEmbedding)
                 .where(Note.user_id == user_id, Note.id != note_id)
-                .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
+                .order_by(
+                    desc(Note.importance_score),
+                    desc(Note.created_at),
+                    NoteEmbedding.embedding.cosine_distance(query_vector)
+                )
                 .limit(5)
             )
             vector_notes = list(vector_res.scalars().all())
@@ -95,7 +99,7 @@ class RagService:
             return {"vector": "", "graph": ""}
 
     async def get_long_term_memory(self, user_id: str, db: AsyncSession, query_text: Optional[str] = None) -> str:
-        """Fetch top long-term memories. Prioritize high importance and recency."""
+        """Fetch top long-term memories. Prioritize importance_score desc, then created_at desc."""
         try:
             if query_text:
                  query_vec = await ai_service.generate_embedding(query_text)
@@ -107,7 +111,7 @@ class RagService:
                       .limit(50)
                  )
                  candidates = list(result.scalars().all())
-                 # Re-rank by importance and date
+                 # Re-rank by importance and date (strictly in order)
                  candidates.sort(key=lambda x: (getattr(x, 'importance_score', 5.0) or 5.0, x.created_at), reverse=True)
                  final = candidates[:5]
             else:
@@ -149,7 +153,7 @@ class RagService:
         vector_context = mt_data["vector"]
         graph_context = mt_data["graph"]
 
-        # 3. Long Term (Top 3 Importance + Relevance)
+        # 3. Long Term (Prioritized)
         long_term = await self.get_long_term_memory(note.user_id, db, query_text=note.transcription_text)
         if not long_term: long_term = "No long-term knowledge."
 

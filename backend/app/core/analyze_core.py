@@ -41,7 +41,7 @@ class RagService:
                 select(Note)
                 .join(NoteEmbedding)
                 .where(Note.user_id == user_id, Note.id != note_id)
-                .order_by(NoteEmbedding.embedding.cosine_distance(query_vector))
+                .order_by(desc(Note.importance_score), desc(Note.created_at), NoteEmbedding.embedding.cosine_distance(query_vector))
                 .limit(5)
             )
             vector_notes = list(vector_res.scalars().all())
@@ -85,7 +85,7 @@ class RagService:
             result = await db.execute(
                 select(LongTermMemory)
                 .where(LongTermMemory.user_id == user_id, LongTermMemory.is_archived == False)
-                .order_by(desc(LongTermMemory.importance_score))
+                .order_by(desc(LongTermMemory.importance_score), desc(LongTermMemory.created_at))
                 .limit(3)
             )
             summaries = list(result.scalars().all())

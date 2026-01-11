@@ -1,17 +1,18 @@
 from celery import shared_task
+from loguru import logger
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete
-from loguru import logger
-import asyncio
+from asgiref.sync import async_to_sync
 
 from infrastructure.database import AsyncSessionLocal
 from app.models import Note, LongTermMemory
 
 async def run_cleanup():
+    """Logic to delete low-importance old memories."""
     async with AsyncSessionLocal() as session:
         now = datetime.now(timezone.utc)
         
-        # 1. Notes: score < 4 AND older than 90 days
+        # 1. Delete from Note where importance_score < 4 and created_at < (now - 90 days)
         note_cutoff = now - timedelta(days=90)
         note_stmt = delete(Note).where(
             Note.importance_score < 4,
@@ -19,7 +20,7 @@ async def run_cleanup():
         )
         note_res = await session.execute(note_stmt)
         
-        # 2. LongTermMemory: score < 5 AND older than 180 days
+        # 2. Delete from LongTermMemory where importance_score < 5 and created_at < (now - 180 days)
         ltm_cutoff = now - timedelta(days=180)
         ltm_stmt = delete(LongTermMemory).where(
             LongTermMemory.importance_score < 5,
@@ -29,14 +30,13 @@ async def run_cleanup():
         
         await session.commit()
         
-        logger.info(f"Memory Cleanup: Deleted {note_res.rowcount} low-score notes and {ltm_res.rowcount} long-term memories.")
+        deleted_notes = note_res.rowcount
+        deleted_ltm = ltm_res.rowcount
+        
+        logger.info(f"Cleanup complete: Deleted {deleted_notes} notes and {deleted_ltm} long-term records.")
+        return deleted_notes, deleted_ltm
 
 @shared_task(name="cleanup_memory")
 def cleanup_memory():
-    """Celery task to perform memory forgetting and cleanup."""
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        # This is for when we run in a context where an event loop is already running
-        asyncio.ensure_future(run_cleanup())
-    else:
-        asyncio.run(run_cleanup())
+    """Celery task entry point."""
+    return async_to_sync(run_cleanup)()

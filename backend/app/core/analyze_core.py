@@ -143,6 +143,8 @@ class AnalyzeCore:
         note.summary = analysis.get("summary")
         note.action_items = analysis.get("action_items", [])
         note.tags = analysis.get("tags", [])
+        # Requirement: Emotion used only for tone/empathy, not logic. 
+        # Here we just store it. Routing decisions (like intent) are separate fields.
         note.mood = analysis.get("mood", "Neutral")
         # Handle clarification promotion
         ask = analysis.get("ask_clarification")

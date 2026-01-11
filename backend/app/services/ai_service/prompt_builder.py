@@ -14,7 +14,7 @@ class PromptBuilder:
         "2. 'summary': Markdown summary; remove audio/routing commands.\n"
         "3. 'action_items': List of strings; exclude 'send message' style commands.\n"
         "4. 'tags': 3-5 tags.\n"
-        "5. 'mood': one of [positive, neutral, negative, frustrated].\n"
+        "5. 'mood': one of [positive, neutral, negative, frustrated]. Use emotion only for tone and empathy, not for intent or action decisions.\n"
         "6. 'calendar_events': [{title, date, time}].\n"
         "7. 'diarization': [{speaker, text}].\n"
         "8. 'intent': one of [task, event, note, crm, journal, idea].\n"

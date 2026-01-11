@@ -63,6 +63,7 @@ async def run_cleanup():
             mem.is_archived = True
             archived_count += 1
             
+            
         # 3. Notes cleanup (Standard deletion for medium-term storage)
         note_cutoff = now - timedelta(days=90)
         note_stmt = delete(Note).where(
@@ -70,6 +71,27 @@ async def run_cleanup():
             Note.created_at < note_cutoff
         )
         note_res = await session.execute(note_stmt)
+        
+        # 4. Graph Cleanup (Requirement: TTL 180 days, Weak relations)
+        # Delete relations older than 180 days
+        rel_ttl_cutoff = now - timedelta(days=180)
+        rel_ttl_stmt = delete(NoteRelation).where(NoteRelation.created_at < rel_ttl_cutoff)
+        rel_ttl_res = await session.execute(rel_ttl_stmt)
+
+        # Delete weak relations (strength < 0.5) if older than 30 days
+        rel_weak_cutoff = now - timedelta(days=30)
+        rel_weak_stmt = delete(NoteRelation).where(
+            NoteRelation.strength < 0.5,
+            NoteRelation.created_at < rel_weak_cutoff
+        )
+        rel_weak_res = await session.execute(rel_weak_stmt)
+
+        # 5. Enforce Max Degree (10) - Opportunistic Cleanup
+        # Find nodes with > 10 relations
+        # This is expensive to do for all, so we can pick a strategy or do nothing here as 
+        # insertion logic (in reflection) already checks it.
+        # But let's delete lowest strength if > 10.
+        # (Omitted here for performance, relying on insertion checks)
         
         await session.commit()
         
@@ -79,8 +101,8 @@ async def run_cleanup():
         monitor.update_graph_metrics(total_notes, total_rels)
         
         logger.info(
-            f"Soft Forgetting Cleanup: Hard deleted {hard_count} old records, "
-            f"Soft archived {archived_count} records. Notes cleaned: {note_res.rowcount}"
+            f"Cleanup: Hard {hard_count}, Arch {archived_count}, Notes {note_res.rowcount}, "
+            f"RelTTL {rel_ttl_res.rowcount}, RelWeak {rel_weak_res.rowcount}"
         )
         return hard_count, archived_count
 

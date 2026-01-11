@@ -82,26 +82,44 @@ class RagService:
             
             if vector_ids:
                 # Graph Filter: Confidence > 0.6 AND Strength > 0.7 (Requirement)
+                # TTL: 180 days
+                ttl_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=180)
+                
                 graph_res = await db.execute(
                     select(NoteRelation)
                     .where(
                         (NoteRelation.note_id1.in_(vector_ids)) | 
                         (NoteRelation.note_id2.in_(vector_ids)),
                         NoteRelation.confidence > 0.6,
-                        NoteRelation.strength > 0.7
+                        NoteRelation.strength > 0.7,
+                        NoteRelation.created_at >= ttl_cutoff
                     )
+                    .order_by(desc(NoteRelation.strength), desc(NoteRelation.confidence))
                 )
                 relations = graph_res.scalars().all()
                 logger.info(f"Graph traversal: found {len(relations)} connections")
                 
                 # We need embeddings for neighbors to calculate weighted score
-                # Map neighbor_id -> max(strength) (if multiple edges to it)
+                # Map neighbor_id -> max(strength * confidence)
+                # Max Degree Constraint: 10 edges per source node
                 neighbor_map = {}
+                degree_count = {} # source_id -> count
+                
                 for r in relations:
+                    source_id = r.note_id1 if r.note_id1 in vector_ids else r.note_id2
                     target = r.note_id2 if r.note_id1 in vector_ids else r.note_id1
+                    
                     if target in vector_ids: continue # Don't cycle back to start set
                     
-                    s = r.strength or 0
+                    # Constraint: Max Degree 10
+                    current_degree = degree_count.get(source_id, 0)
+                    if current_degree >= 10:
+                        continue
+                    degree_count[source_id] = current_degree + 1
+                    
+                    # Score using strength * confidence (Relation Quality)
+                    s = (r.strength or 0) * (r.confidence or 1.0)
+                    
                     if target not in neighbor_map:
                         neighbor_map[target] = s
                     else:
@@ -122,10 +140,10 @@ class RagService:
                         n_obj = row[0]
                         dist = row[1]
                         sim = 1.0 - dist
-                        strength = neighbor_map[n_obj.id]
+                        rel_score = neighbor_map[n_obj.id]
                         
-                        # Weighted Score: 30% Graph + 70% Cosine
-                        final_score = (0.3 * strength) + (0.7 * sim)
+                        # Weighted Score: 30% Graph (Quality) + 70% Cosine
+                        final_score = (0.3 * rel_score) + (0.7 * sim)
                         candidates_scored.append((final_score, n_obj))
                     
                     # Sort by Final Score

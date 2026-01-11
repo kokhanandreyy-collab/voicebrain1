@@ -53,6 +53,14 @@ class CacheHandler:
             logger.warning(f"Embedding cache retrieval failed: {e}")
             return None
 
+    def generate_smart_key(self, content_hash: str, identity_version: str, context_hash: str = "") -> str:
+        """
+        Generates a robust hash key for complex content (e.g. reflection).
+        Key = Hash( content_hash + identity_version + context_hash )
+        """
+        raw = f"{content_hash}|{identity_version}|{context_hash}"
+        return hashlib.sha256(raw.encode()).hexdigest()
+
     async def save_embedding(self, text: str, embedding: list):
         """Saves embedding to cache."""
         if not self.redis: return

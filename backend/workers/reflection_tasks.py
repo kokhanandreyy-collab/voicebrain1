@@ -41,45 +41,52 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
         # 2. Build Cache Key / Context
         notes_text = "\n\n".join([f"Date: {n.created_at}\nText: {n.transcription_text[:1000]}" for n in notes])
         
-        # 2.5 Semantic Cache Check
+        # 2.5 Smart Cache Check
         from app.models import CachedAnalysis
         import datetime
         import json
+        import hashlib
+        
+        # Fetch Identity Version
+        user_info_res = await db.execute(select(User.identity_updated_at).where(User.id == user_id))
+        user_info = user_info_res.first()
+        id_ver = user_info.identity_updated_at.isoformat() if user_info and user_info.identity_updated_at else "v0"
+        
+        # Hash (Content + Identity)
+        content_hash = hashlib.sha256(notes_text.encode()).hexdigest()
+        smart_key = hashlib.sha256(f"{content_hash}|{id_ver}".encode()).hexdigest()
         
         reflection_cache_hit = False
         reflection_data = None
         context_embedding = None
         
         try:
-            # Use combined notes text as semantic context
-            context_embedding = await ai_service.generate_embedding(notes_text[:5000]) # Cap for embedding efficiency
-            
-            # Search cache: threshold 0.85 similarity -> 0.15 distance
+            # Check Smart Key
             cache_res = await db.execute(
                 select(CachedAnalysis)
                 .where(
                     CachedAnalysis.user_id == user_id,
-                    CachedAnalysis.embedding.cosine_distance(context_embedding) < 0.15,
+                    CachedAnalysis.cache_key == smart_key,
                     CachedAnalysis.expires_at > datetime.datetime.now(datetime.timezone.utc),
                     CachedAnalysis.scope == "analysis_only"
                 )
-                .order_by(CachedAnalysis.embedding.cosine_distance(context_embedding))
-                .limit(1)
             )
             cached_entry = cache_res.scalars().first()
             
             if cached_entry:
-                logger.info(f"Cache hit for user reflection {user_id} (Transparent Cache).")
+                logger.info(f"Cache hit for user reflection {user_id} (Smart Key).")
                 track_cache_hit("reflection")
-                # Transparent Cache: If we hit cache, we assume the work (memory/identity) was done previously.
-                # We return without re-saving to LTM or updating identity.
                 return
             else:
                 logger.info(f"Cache miss for user reflection {user_id}")
                 track_cache_miss("reflection")
+                
+            # If miss, generate embedding for storage later
+            context_embedding = await ai_service.generate_embedding(notes_text[:5000])
+
         except Exception as e:
             logger.warning(f"[Reflection Cache] Lookup failed: {e}")
-
+ 
         prompt = (
             "Обобщи ключевые события, проекты, стиль общения, привычки, изменения пользователя. "
             "Сделай краткий summary (200–400 слов). Оцени важность 0–10 (где 10 = критически важное, меняющее жизнь событие). "
@@ -115,7 +122,8 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
                             embedding=context_embedding,
                             result=data,
                             expires_at=ttl,
-                            scope="analysis_only"
+                            scope="analysis_only",
+                            cache_key=smart_key
                         ))
                  except Exception as cache_save_err:
                     logger.warning(f"[Reflection Cache] Save failed: {cache_save_err}")

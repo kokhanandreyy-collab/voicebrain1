@@ -341,6 +341,7 @@ class CachedAnalysis(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True))
     scope = Column(String, default="general", index=True)
+    cache_key = Column(String, index=True, nullable=True)
 
 class CachedIntent(Base):
     __tablename__ = "cached_intents"

@@ -27,37 +27,43 @@ async def generate_ultra_summary(text: str) -> str:
         return text[:300] # Fallback to truncated text
 
 async def run_cleanup():
-    """Logic for soft forgetting, archiving, and hard deletion."""
+    """
+    Logic for Soft Forgetting:
+    1. Hard Delete: ONLY records older than 365 days.
+    2. Soft Archiving: 
+       - Records older than 180 days.
+       - Records with very low importance (< 3.0) regardless of age (if > 30 days).
+    """
     async with AsyncSessionLocal() as session:
         now = datetime.now(timezone.utc)
         
-        # 1. Hard Delete very old (>365 days) OR very low importance (< 2.0)
+        # 1. Hard Delete (Strictly > 365 days)
         hard_cutoff = now - timedelta(days=365)
-        hard_stmt = delete(LongTermMemory).where(
-            (LongTermMemory.created_at < hard_cutoff) | 
-            (LongTermMemory.importance_score < 2.0)
-        )
+        hard_stmt = delete(LongTermMemory).where(LongTermMemory.created_at < hard_cutoff)
         hard_res = await session.execute(hard_stmt)
         hard_count = hard_res.rowcount
         
-        # 2. Soft Archive (score < 5 AND older than 180 days)
-        soft_cutoff = now - timedelta(days=180)
+        # 2. Soft Archive (Soft Forgetting)
+        # Conditions: (age > 180 days) OR (score < 3.0 AND age > 30 days)
+        soft_cutoff_age = now - timedelta(days=180)
+        soft_cutoff_low_score = now - timedelta(days=30)
+        
         soft_query = select(LongTermMemory).where(
             LongTermMemory.is_archived == False,
-            LongTermMemory.importance_score < 5.0,
-            LongTermMemory.created_at < soft_cutoff
+            (LongTermMemory.created_at < soft_cutoff_age) | 
+            ((LongTermMemory.importance_score < 3.0) & (LongTermMemory.created_at < soft_cutoff_low_score))
         )
         soft_targets_res = await session.execute(soft_query)
         soft_targets = soft_targets_res.scalars().all()
         
         archived_count = 0
         for mem in soft_targets:
-            # Generate ultra-summary before archiving
+            # Compression: generate ultra-summary before archiving
             mem.archived_summary = await generate_ultra_summary(mem.summary_text)
             mem.is_archived = True
             archived_count += 1
             
-        # 3. Notes cleanup
+        # 3. Notes cleanup (Standard deletion for medium-term storage)
         note_cutoff = now - timedelta(days=90)
         note_stmt = delete(Note).where(
             Note.importance_score < 4,
@@ -67,15 +73,14 @@ async def run_cleanup():
         
         await session.commit()
         
-        # Monitoring: Graph Size after cleanup
+        # Monitoring
         total_notes = (await session.execute(select(func.count(Note.id)))).scalar()
         total_rels = (await session.execute(select(func.count(NoteRelation.id)))).scalar()
         monitor.update_graph_metrics(total_notes, total_rels)
         
         logger.info(
-            f"Memory Cleanup: Hard deleted {hard_count} LTM records, "
-            f"Soft archived {archived_count} records, "
-            f"Deleted {note_res.rowcount} low-score notes."
+            f"Soft Forgetting Cleanup: Hard deleted {hard_count} old records, "
+            f"Soft archived {archived_count} records. Notes cleaned: {note_res.rowcount}"
         )
         return hard_count, archived_count
 

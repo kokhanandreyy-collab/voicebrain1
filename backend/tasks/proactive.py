@@ -57,23 +57,43 @@ async def _trigger_proactive_reminders_async():
                 if not memories and not relations:
                     continue
                 
+                # Check User Global Setting
+                prefs = user.adaptive_preferences or {}
+                if not prefs.get("enable_proactive", True):
+                    continue
+
                 # 3. Compile context for DeepSeek
-                context_parts = [f"Memory: {m.summary_text}" for m in memories]
-                # If we have relations, we try to fetch notes to understand the bridge
-                # But for simplicity, we focus on summaries
+                context_parts = [f"Memory: {m.summary_text} (Score: {m.importance_score})" for m in memories]
                 
                 prompt = (
                     "You are a 'Proactive Memory' agent. Review these notes from the user's life exactly 7 days ago.\n"
-                    "Generate a short, friendly, and helpful follow-up question (max 20 words).\n"
-                    "Example: 'На прошлой неделе ты планировал X, как продвигается?'\n"
-                    "Language: Russian.\n\n"
+                    "Goal: Identify if there is a highly relevant, unresolved, or meaningful topic to follow up on.\n"
+                    "Output a JSON object: {\"question\": \"...\", \"relevance_score\": 0-10}.\n"
+                    "Criteria: relevance_score should be high (8-10) only if it's a critical task or emotional event. "
+                    "If mostly mundane, score low.\n"
+                    "Language: Russian.\n"
                     f"Context:\n" + "\n".join(context_parts)
                 )
                 
-                question = await ai_service.get_chat_completion([
-                    {"role": "system", "content": "You are a proactive life-assistant and therapist. Output only the question."},
+                response_json = await ai_service.get_chat_completion([
+                    {"role": "system", "content": "You are a proactive life-assistant. Output JSON only."},
                     {"role": "user", "content": prompt}
-                ])
+                ], response_format="json_object")
+                
+                try:
+                    data = json.loads(response_json)
+                    question = data.get("question")
+                    score = data.get("relevance_score", 0)
+                except:
+                    logger.warning("Failed to parse proactive JSON")
+                    continue
+                
+                # Requirement: Relevance > 7
+                if score <= 7:
+                    logger.info(f"Skipping proactive for user {user.id}: Low relevance {score}")
+                    continue
+
+                # Requirement: Limit 5/day. (Implicitly met as this job runs once daily and sends 1 msg)
                 
                 # 4. Notify via Telegram
                 if bot and user.telegram_chat_id:

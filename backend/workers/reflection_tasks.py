@@ -143,12 +143,78 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
              )
              db.add(memory)
              
+             print(f"DEBUG: Identity check. identity={identity}")
              # 5. Update User Identity Logic
              if identity:
                  user_res = await db.execute(select(User).where(User.id == user_id))
                  user_obj = user_res.scalars().first()
+                 print(f"DEBUG: Retrieved user_obj={user_obj}")
                  if user_obj:
                      user_obj.identity_summary = identity
+                     user_obj.identity_updated_at = datetime.datetime.now(datetime.timezone.utc)
+                     
+                     # --- Adaptive Preferences Decay ---
+                     import math
+                     prefs = user_obj.adaptive_preferences or {}
+                     new_prefs = {}
+                     now = datetime.datetime.now(datetime.timezone.utc)
+                     decay_constant = 30.0 # days
+                     
+                     # Structure: key -> {value, confidence, updated_at} OR simple value (legacy)
+                     has_changes = False
+                     
+                     for k, v in prefs.items():
+                         # Normalized structure
+                         if isinstance(v, dict) and "confidence" in v:
+                             obj = v
+                         else:
+                             # Legacy migration
+                             obj = {
+                                 "value": v, 
+                                 "confidence": 1.0, 
+                                 "updated_at": now.isoformat()
+                             }
+                             has_changes = True
+
+                         last_upd_str = obj.get("updated_at")
+                         try:
+                             last_upd = datetime.datetime.fromisoformat(last_upd_str)
+                             if last_upd.tzinfo is None:
+                                 last_upd = last_upd.replace(tzinfo=datetime.timezone.utc)
+                         except:
+                             last_upd = now
+
+                         days = (now - last_upd).total_seconds() / (24 * 3600)
+                         current_conf = obj.get("confidence", 1.0)
+                         
+                         # Formula: new_conf = conf * exp(-days / 30)
+                         # But wait, if we only apply this on updates, days is 0?
+                         # Ah, this logic runs on REFLECTION (periodic).
+                         # So even if not updated, we decay it.
+                         
+                         new_conf = current_conf * math.exp(-days / decay_constant)
+                         
+                         if new_conf < 0.4:
+                             logger.info(f"Removing decayed preference: {k} (conf={new_conf:.2f})")
+                             has_changes = True
+                             continue # Drop
+                         
+                         # Update confidence only in the object, don't change updated_at unless value changes
+                         # But here we are just decaying.
+                         if abs(new_conf - current_conf) > 0.01:
+                             obj["confidence"] = new_conf
+                             # Don't update 'updated_at' here, otherwise days becomes 0 next time
+                             # 'updated_at' refers to when the VALUE was last confirmed/set.
+                             has_changes = True
+                         
+                         new_prefs[k] = obj
+                     
+                     if has_changes:
+                         user_obj.adaptive_preferences = new_prefs
+                         user_obj.adaptive_updated_at = now
+                         # SQLAlchemy tracks json mutation if reassigned
+                         
+                     # --- End Decay ---
              
              # 6. Graph Relations
              try:

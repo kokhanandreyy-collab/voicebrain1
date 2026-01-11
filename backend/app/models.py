@@ -55,6 +55,10 @@ class User(Base):
     from pgvector.sqlalchemy import VECTOR
     identity_embedding = Column(VECTOR(1536)) # For gated updates (cosine similarity check)
     emotion_history = Column(JSON, default=[]) # Append-only log of detected emotions
+    
+    identity_updated_at = Column(DateTime(timezone=True), default=func.now())
+    adaptive_updated_at = Column(DateTime(timezone=True), default=func.now())
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

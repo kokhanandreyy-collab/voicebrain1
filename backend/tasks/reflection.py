@@ -1,6 +1,6 @@
 from celery import shared_task
 from sqlalchemy.future import select
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, delete
 from loguru import logger
 import datetime
 import json
@@ -191,10 +191,31 @@ async def _process_reflection_async(user_id: str):
                     {"role": "user", "content": rel_prompt}
                 ])
                 relations = json.loads(ai_service.clean_json_response(resp3))
+                
+                # OPTIMIZATION: Constraint Checks
+                # 1. Cleanup old relations (TTL 180 days)
+                ttl_cutoff = datetime.datetime.now() - datetime.timedelta(days=180)
+                await db.execute(
+                    delete(NoteRelation).where(NoteRelation.created_at < ttl_cutoff)
+                )
+                
                 for r in relations:
+                    n1 = r.get("note1_id")
+                    n2 = r.get("note2_id")
+                    if not n1 or not n2: continue
+                    
+                    # 2. Max Degree Check (Limit 10 per node)
+                    # Check n1
+                    c1 = (await db.execute(select(func.count(NoteRelation.id)).where((NoteRelation.note_id1 == n1) | (NoteRelation.note_id2 == n1)))).scalar()
+                    if c1 >= 10: continue
+                    
+                    # Check n2
+                    c2 = (await db.execute(select(func.count(NoteRelation.id)).where((NoteRelation.note_id1 == n2) | (NoteRelation.note_id2 == n2)))).scalar()
+                    if c2 >= 10: continue
+
                     db.add(NoteRelation(
-                        note_id1=r.get("note1_id"),
-                        note_id2=r.get("note2_id"),
+                        note_id1=n1,
+                        note_id2=n2,
                         relation_type=r.get("relation_type", "related"),
                         strength=float(r.get("strength", 1.0)),
                         confidence=float(r.get("confidence", 1.0)),

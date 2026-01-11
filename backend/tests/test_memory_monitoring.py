@@ -1,56 +1,54 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from infrastructure.metrics import track_cache_hit, track_cache_miss, get_reflection_hit_rate
-import redis
+from unittest.mock import AsyncMock, patch, MagicMock
+from tasks.reflection import _process_reflection_async
+from infrastructure.monitoring import monitor
 
 @pytest.mark.asyncio
-async def test_reflection_monitoring_metrics():
-    """Test that reflection hit/miss tracking works and produces a valid hit rate."""
-    
-    # Mock redis
-    mock_redis = MagicMock()
-    # stats:cache_hits:reflection = 8, stats:cache_misses:reflection = 2 -> 80%
-    mock_redis.get.side_effect = lambda k: {
-        "stats:cache_hits:reflection": "8",
-        "stats:cache_misses:reflection": "2"
-    }.get(k)
-    
-    with patch("infrastructure.metrics.r", mock_redis):
-        # 1. Track a hit
-        track_cache_hit("reflection")
-        mock_redis.incr.assert_any_call("stats:cache_hits:reflection")
-        
-        # 2. Track a miss
-        track_cache_miss("reflection")
-        mock_redis.incr.assert_any_call("stats:cache_misses:reflection")
-        
-        # 3. Calculate hit rate
-        rate = get_reflection_hit_rate()
-        assert rate == 80.0
-
-@pytest.mark.asyncio
-async def test_graph_size_updates():
-    """Test that graph size Gauges are updated correctly in the reflection task."""
-    from workers.reflection_tasks import _process_reflection_async
-    
+async def test_memory_monitoring_update():
+    """Test that graph metrics and hit rate are updated during reflection."""
+    user_id = "u1"
     db_mock = AsyncMock()
-    # Mocking counts: 100 nodes, 250 edges
-    db_mock.execute.side_effect = [
-        MagicMock(scalar=lambda: 100), # nodes
-        MagicMock(scalar=lambda: 250), # edges
-        # ... rest of the notes fetching etc
-    ]
     
-    with patch("workers.reflection_tasks.MEMORY_GRAPH_NODES") as mock_nodes_gauge, \
-         patch("workers.reflection_tasks.MEMORY_GRAPH_EDGES") as mock_edges_gauge, \
-         patch("workers.reflection_tasks.AsyncSessionLocal", return_value=db_mock), \
-         patch("workers.reflection_tasks.select", lambda x: x): # simplified select for mock
+    # Mock counts
+    # select(func.count(Note.id))
+    # select(func.count(NoteRelation.id))
+    # select(User)
+    # select(Note)
+    count_notes = MagicMock()
+    count_notes.scalar.return_value = 100
+    
+    count_rels = MagicMock()
+    count_rels.scalar.return_value = 50
+    
+    user_res = MagicMock()
+    user_res.scalars.return_value.first.return_value = None # Stop early after metrics
+    
+    db_mock.execute.side_effect = [count_notes, count_rels, user_res]
+    
+    with patch("tasks.reflection.AsyncSessionLocal", return_value=db_mock), \
+         patch("infrastructure.monitoring.memory_graph_nodes") as mock_nodes, \
+         patch("infrastructure.monitoring.memory_graph_edges") as mock_edges:
         
-        # We only need to trigger the start of the function to see the graph stats check
-        try:
-            await _process_reflection_async("user123")
-        except Exception:
-            pass # We expect it to fail later due to heavy mocking, but gauges should be set
-            
-        mock_nodes_gauge.set.assert_called_with(100)
-        mock_edges_gauge.set.assert_called_with(250)
+        await _process_reflection_async(user_id)
+        
+        # Verify Prometheus metrics were updated
+        mock_nodes.set.assert_called_with(100)
+        mock_edges.set.assert_called_with(50)
+
+def test_hit_rate_calculation():
+    """Test the hit rate math in MemoryMonitor."""
+    with patch("infrastructure.monitoring.analysis_cache_hits") as mock_hits, \
+         patch("infrastructure.monitoring.analysis_cache_misses") as mock_misses, \
+         patch("infrastructure.monitoring.reflection_hit_rate_gauge") as mock_gauge:
+        
+        # Setup mock metrics values
+        h1 = MagicMock(); h1._value.get.return_value = 80
+        m1 = MagicMock(); m1._value.get.return_value = 20
+        
+        mock_hits._metrics = {(): h1}
+        mock_misses._metrics = {(): m1}
+        
+        monitor.update_hit_rate()
+        
+        # 80 / (80+20) = 0.8
+        mock_gauge.set.assert_called_with(0.8)

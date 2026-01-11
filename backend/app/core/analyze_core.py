@@ -10,10 +10,7 @@ import hashlib
 from app.models import Note, User, CachedAnalysis, CachedIntent
 from app.services.ai_service import ai_service
 from .rag_service import rag_service
-
-# Mock tracking
-def track_cache_hit(name): logger.debug(f"Cache Hit: {name}")
-def track_cache_miss(name): logger.debug(f"Cache Miss: {name}")
+from infrastructure.monitoring import monitor
 
 class AnalyzeCore:
     async def _check_intent_cache(self, text: str, user_id: str, db: AsyncSession) -> Optional[Dict[str, Any]]:
@@ -43,10 +40,11 @@ class AnalyzeCore:
             )
         )
         entry = res.scalars().first()
-        if entry:
-            logger.info(f"Intent Cache Hit: {intent_key}")
-            return entry.action_json
-        return None
+            if entry:
+                logger.info(f"Intent Cache Hit: {intent_key}")
+                monitor.track_cache_hit("intent")
+                return entry.action_json
+            return None
 
     async def _save_intent_cache(self, text: str, user_id: str, analysis: Dict[str, Any], db: AsyncSession):
         """Saves simple intent results to cache (TTL 7 days)."""
@@ -108,7 +106,7 @@ class AnalyzeCore:
             if cached_entry:
                 analysis = cached_entry.result
                 cache_hit = True
-                track_cache_hit("semantic")
+                monitor.track_cache_hit("semantic")
 
         # 5. DeepSeek Call (Fallback)
         if not cache_hit:
@@ -125,7 +123,7 @@ class AnalyzeCore:
             emb = await ai_service.generate_embedding(note.transcription_text)
             ttl = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
             db.add(CachedAnalysis(user_id=note.user_id, embedding=emb, result=analysis, expires_at=ttl))
-            track_cache_miss("all")
+            monitor.track_cache_miss("all")
 
         # 6. Apply & Finalize
         self._apply_analysis_to_note(note, analysis)

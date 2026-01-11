@@ -1,12 +1,13 @@
 from celery import shared_task
 from loguru import logger
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import delete, update, select
+from sqlalchemy import delete, update, select, func
 from asgiref.sync import async_to_sync
 
 from infrastructure.database import AsyncSessionLocal
-from app.models import Note, LongTermMemory
+from app.models import Note, LongTermMemory, NoteRelation
 from app.services.ai_service import ai_service
+from infrastructure.monitoring import monitor
 
 async def generate_ultra_summary(text: str) -> str:
     """Generate a highly compressed summary (50-100 words)."""
@@ -56,7 +57,7 @@ async def run_cleanup():
             mem.is_archived = True
             archived_count += 1
             
-        # 3. Notes cleanup (keep hard delete as before or adjust)
+        # 3. Notes cleanup
         note_cutoff = now - timedelta(days=90)
         note_stmt = delete(Note).where(
             Note.importance_score < 4,
@@ -65,6 +66,11 @@ async def run_cleanup():
         note_res = await session.execute(note_stmt)
         
         await session.commit()
+        
+        # Monitoring: Graph Size after cleanup
+        total_notes = (await session.execute(select(func.count(Note.id)))).scalar()
+        total_rels = (await session.execute(select(func.count(NoteRelation.id)))).scalar()
+        monitor.update_graph_metrics(total_notes, total_rels)
         
         logger.info(
             f"Memory Cleanup: Hard deleted {hard_count} LTM records, "

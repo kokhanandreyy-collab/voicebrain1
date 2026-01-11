@@ -1,6 +1,6 @@
 from celery import shared_task
 from sqlalchemy.future import select
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from loguru import logger
 import datetime
 import json
@@ -9,15 +9,23 @@ from asgiref.sync import async_to_sync
 from infrastructure.database import AsyncSessionLocal
 from app.models import User, Note, LongTermMemory, NoteRelation
 from app.services.ai_service import ai_service
+from infrastructure.monitoring import monitor
 
 async def _process_reflection_async(user_id: str):
     """
     1. Summarize last 50 notes.
     2. Extract graph-like relations (ENA) for high-importance notes.
     3. Update user identity (Stable vs Volatile).
+    4. Monitoring: Update graph metrics and hit rate.
     """
     logger.info(f"Starting graph-based reflection for user {user_id}")
     async with AsyncSessionLocal() as db:
+        # Monitoring: Global Graph Size
+        total_notes = (await db.execute(select(func.count(Note.id)))).scalar()
+        total_rels = (await db.execute(select(func.count(NoteRelation.id)))).scalar()
+        monitor.update_graph_metrics(total_notes, total_rels)
+        monitor.update_hit_rate()
+
         # Fetch user
         user_res = await db.execute(select(User).where(User.id == user_id))
         user = user_res.scalars().first()

@@ -1,72 +1,85 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from app.core.analyze_core import analyze_core
 from app.models import Note, User
-import json
 
 @pytest.mark.asyncio
-async def test_adaptive_memory_extraction():
-    """Test that AI extracts adaptive updates and saves them to user preferences."""
-    db_mock = AsyncMock()
-    note = MagicMock(spec=Note)
-    note.transcription_text = "Question: What is P0?\nAnswer: P0 means critical urgency."
+async def test_adaptive_memory_detection():
+    """Test that DeepSeek uncertainty triggers ask_clarification."""
+    note = Note(id="n1", transcription_text="Set priority high for this task", user_id="u1")
+    user = User(id="u1", adaptive_preferences={})
+    db = AsyncMock()
+    memory_service = AsyncMock()
     
-    user = MagicMock(spec=User)
-    user.id = "user_123"
-    user.adaptive_preferences = {}
-    user.bio = ""
-    user.identity_summary = ""
-    user.target_language = "Original"
-    user.emotion_history = []
-    
-    # Mock AI response with adaptive_update
-    ai_analysis = {
-        "title": "Preference Update",
-        "summary": "User defined P0.",
-        "adaptive_update": {"P0": "critical urgency"},
-        "mood": "neutral"
+    # Mock AI response with uncertainty in summary
+    mock_analysis = {
+        "title": "Task",
+        "summary": "User wants to set high priority. I am not sure what high priority means here (P0 or P1?). Clarify please.",
+        "intent": "todo",
+        "priority": 1
     }
     
     with patch("app.core.analyze_core.ai_service") as mock_ai, \
-         patch("app.core.analyze_core.rag_service") as mock_rag, \
-         patch("app.core.analyze_core.track_cache_miss"):
+         patch("app.core.analyze_core.rag_service.build_hierarchical_context", return_value="context"), \
+         patch("app.core.analyze_core.CachedAnalysis"):
         
-        mock_ai.analyze_text.return_value = ai_analysis
         mock_ai.generate_embedding.return_value = [0.1]*1536
-        mock_rag.build_hierarchical_context.return_value = "Context"
+        mock_ai.analyze_text.return_value = mock_analysis
         
-        await analyze_core.analyze_step(note, user, db_mock, AsyncMock())
+        # Execute
+        analysis, cache_hit = await analyze_core.analyze_step(note, user, db, memory_service)
+        
+        # Verify ask_clarification was promoted to action_items
+        assert any("Clarification Needed:" in str(item) for item in note.action_items)
+        assert "ask_clarification" in analysis
+
+@pytest.mark.asyncio
+async def test_adaptive_memory_saving():
+    """Test that adaptive_preferences are updated from AI analysis."""
+    note = Note(id="n1", transcription_text="P0 means Critical", user_id="u1")
+    user = User(id="u1", adaptive_preferences={"old": "val"})
+    db = AsyncMock()
+    memory_service = AsyncMock()
+    
+    # Mock AI detecting a preference update
+    mock_analysis = {
+        "title": "Preference Update",
+        "summary": "User defined P0",
+        "adaptive_update": {"priority_p0": "Critical"}
+    }
+    
+    with patch("app.core.analyze_core.ai_service") as mock_ai, \
+         patch("app.core.analyze_core.rag_service.build_hierarchical_context", return_value="context"):
+        
+        mock_ai.generate_embedding.return_value = [0.1]*1536
+        mock_ai.analyze_text.return_value = mock_analysis
+        
+        # Execute
+        await analyze_core.analyze_step(note, user, db, memory_service)
         
         # Verify preferences updated
-        assert user.adaptive_preferences == {"P0": "critical urgency"}
-        db_mock.execute.assert_called() # update(User) call
+        assert user.adaptive_preferences["priority_p0"] == "Critical"
+        assert user.adaptive_preferences["old"] == "val"
+        db.execute.assert_called() # Should call update(User)
 
 @pytest.mark.asyncio
-async def test_ask_clarification_on_uncertainty():
-    """Test that AI returns ask_clarification when 'not sure' is in summary."""
-    db_mock = AsyncMock()
-    note = MagicMock(spec=Note)
-    note.transcription_text = "Vague message."
-    note.action_items = []
-    
-    user = MagicMock(spec=User)
-    user.adaptive_preferences = {}
-    
-    # Summary containing 'not sure'
-    ai_analysis = {
-        "summary": "I am not sure what the priority is.",
-        "mood": "neutral"
-    }
+async def test_adaptive_memory_prompt_injection():
+    """Test that adaptive_preferences are injected into the AI context."""
+    note = Note(id="n1", transcription_text="Test", user_id="u1")
+    user = User(id="u1", adaptive_preferences={"p0": "Critical"})
+    db = AsyncMock()
+    memory_service = AsyncMock()
     
     with patch("app.core.analyze_core.ai_service") as mock_ai, \
-         patch("app.core.analyze_core.rag_service") as mock_rag, \
-         patch("app.core.analyze_core.track_cache_miss"):
+         patch("app.core.analyze_core.rag_service.build_hierarchical_context", return_value="context"):
         
-        mock_ai.analyze_text.return_value = ai_analysis
         mock_ai.generate_embedding.return_value = [0.1]*1536
+        mock_ai.analyze_text.return_value = {}
         
-        analysis, _ = await analyze_core.analyze_step(note, user, db_mock, AsyncMock())
+        await analyze_core.analyze_step(note, user, db, memory_service)
         
-        # Verify clarification was promoted
-        assert "ask_clarification" in analysis
-        assert "Clarification Needed:" in note.action_items[0]
+        # Verify ai_service.analyze_text was called with user_context containing preferences
+        args, kwargs = mock_ai.analyze_text.call_args
+        user_context = kwargs.get("user_context", "")
+        assert '"p0": "Critical"' in user_context
+        assert "Adaptive preferences:" in user_context

@@ -164,4 +164,14 @@ class RagService:
             f"Long-term knowledge (Key memories):\n{long_term}"
         )
 
+    async def restore_memory(self, memory_id: str, db: AsyncSession) -> bool:
+        """Restores an archived memory record."""
+        result = await db.execute(select(LongTermMemory).where(LongTermMemory.id == memory_id))
+        memory = result.scalars().first()
+        if memory and memory.is_archived:
+            memory.is_archived = False
+            await db.commit()
+            return True
+        return False
+
 rag_service = RagService()

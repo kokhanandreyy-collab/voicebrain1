@@ -299,6 +299,7 @@ class LongTermMemory(Base):
     importance_score = Column(Float, default=8.0, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_archived = Column(Boolean, default=False, index=True) # Soft delete
+    archived_summary = Column(Text, nullable=True) # Ultra-summary for compressed memory
     
     from pgvector.sqlalchemy import VECTOR
     embedding = Column(VECTOR(1536))

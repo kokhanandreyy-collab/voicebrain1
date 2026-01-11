@@ -60,7 +60,8 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
                 .where(
                     CachedAnalysis.user_id == user_id,
                     CachedAnalysis.embedding.cosine_distance(context_embedding) < 0.15,
-                    CachedAnalysis.expires_at > datetime.datetime.now(datetime.timezone.utc)
+                    CachedAnalysis.expires_at > datetime.datetime.now(datetime.timezone.utc),
+                    CachedAnalysis.scope == "analysis_only"
                 )
                 .order_by(CachedAnalysis.embedding.cosine_distance(context_embedding))
                 .limit(1)
@@ -68,10 +69,11 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
             cached_entry = cache_res.scalars().first()
             
             if cached_entry:
-                logger.info(f"Cache hit for user reflection {user_id}")
+                logger.info(f"Cache hit for user reflection {user_id} (Transparent Cache).")
                 track_cache_hit("reflection")
-                reflection_data = cached_entry.result
-                reflection_cache_hit = True
+                # Transparent Cache: If we hit cache, we assume the work (memory/identity) was done previously.
+                # We return without re-saving to LTM or updating identity.
+                return
             else:
                 logger.info(f"Cache miss for user reflection {user_id}")
                 track_cache_miss("reflection")
@@ -112,7 +114,8 @@ async def _process_reflection_async(user_id: str, limit: int = 50):
                             user_id=user_id,
                             embedding=context_embedding,
                             result=data,
-                            expires_at=ttl
+                            expires_at=ttl,
+                            scope="analysis_only"
                         ))
                  except Exception as cache_save_err:
                     logger.warning(f"[Reflection Cache] Save failed: {cache_save_err}")

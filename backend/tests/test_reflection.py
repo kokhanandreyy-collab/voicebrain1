@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from workers.reflection_tasks import _process_reflection_async, _trigger_reflection_async, reflection_daily
-from app.models import User, Note, LongTermMemory
+from app.models import User, Note, LongTermMemory, CachedAnalysis
 
 @pytest.fixture
 def mock_db_session():
@@ -108,3 +108,48 @@ async def test_reflection_trigger(mock_db_session):
          assert mock_task.delay.call_count == 2
          mock_task.delay.assert_any_call("u1")
          mock_task.delay.assert_any_call("u2")
+
+@pytest.mark.asyncio
+async def test_reflection_cache_hit_transparent(mock_db_session):
+    """Test transparent cache: on hit, do nothing (no new memory, no identity update)."""
+    user_id = "u1"
+    
+    # Mock Notes
+    notes = [Note(id="n1", user_id=user_id, transcription_text="Old news", created_at="2024-01-01")]
+    
+    mock_metric = MagicMock()
+    mock_metric.scalar.return_value = 0
+    
+    mock_notes_res = MagicMock()
+    mock_notes_res.scalars().all.return_value = notes
+    
+    # Mock CACHE HIT
+    mock_cached_entry = CachedAnalysis(result={"summary": "old"}, scope="analysis_only")
+    mock_cache_res = MagicMock()
+    mock_cache_res.scalars().first.return_value = mock_cached_entry
+    
+    mock_db_session.execute.side_effect = [
+        mock_metric, # nodes
+        mock_metric, # edges
+        mock_notes_res, # notes
+        mock_cache_res  # cache check -> HIT
+    ]
+    
+    with patch("workers.reflection_tasks.ai_service") as mock_ai, \
+         patch("workers.reflection_tasks.AsyncSessionLocal") as mock_session_cls:
+         
+         mock_session_cls.return_value.__aenter__.return_value = mock_db_session
+         mock_ai.generate_embedding = AsyncMock(return_value=[0.1]*1536)
+         
+         await _process_reflection_async(user_id)
+         
+         # Verify AI NOT called for completion (because returned early)
+         mock_ai.get_chat_completion.assert_not_called()
+         
+         # Verify NO add to DB (CachedAnalysis was already there, LTM not added)
+         # Note: logging might call add? No. 
+         # _process_reflection_async does not add anything if it returns early.
+         assert mock_db_session.add.call_count == 0
+         
+         # Verify Session didn't commit (optimization)
+         # mock_db_session.commit.assert_not_called() # Optional check

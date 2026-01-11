@@ -40,11 +40,11 @@ class AnalyzeCore:
             )
         )
         entry = res.scalars().first()
-            if entry:
-                logger.info(f"Intent Cache Hit: {intent_key}")
-                monitor.track_cache_hit("intent")
-                return entry.action_json
-            return None
+        if entry:
+            logger.info(f"Intent Cache Hit: {intent_key}")
+            monitor.track_cache_hit("intent")
+            return entry.action_json
+        return None
 
     async def _save_intent_cache(self, text: str, user_id: str, analysis: Dict[str, Any], db: AsyncSession):
         """Saves simple intent results to cache (TTL 7 days)."""

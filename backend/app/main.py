@@ -140,6 +140,7 @@ from app.api.routers.v1 import (
     oauth, auth, tags, notifications, 
     feedback, admin, users, settings as user_settings
 )
+from app.api.routers.v1.memory import memories
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(auth.router, prefix="/auth")
@@ -154,6 +155,7 @@ api_v1_router.include_router(feedback.router, prefix="/feedback")
 api_v1_router.include_router(admin.router, prefix="/admin")
 api_v1_router.include_router(users.router, prefix="/users")
 api_v1_router.include_router(user_settings.router, prefix="/user/settings")
+api_v1_router.include_router(memories.router)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 
